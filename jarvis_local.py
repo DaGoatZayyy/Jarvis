@@ -1,7 +1,6 @@
 """Ollama local AI provider for J.A.R.V.I.S."""
 from __future__ import annotations
 
-import base64
 import json
 import re
 import urllib.error
@@ -36,8 +35,10 @@ class OllamaProvider:
             return json.loads(raw.decode("utf-8")) if raw else {}
         except urllib.error.HTTPError as err:
             detail = err.read(1200).decode("utf-8", "replace")
+            self.logger(f"Local AI HTTP error {err.code}: {detail[:300]}")
             raise OllamaError(f"Ollama returned HTTP {err.code}: {detail[:700]}") from err
         except (urllib.error.URLError, TimeoutError, OSError) as err:
+            self.logger(f"Local AI connection error: {err}")
             raise OllamaError(
                 f"Cannot connect to Ollama at {self.base_url}. Make sure Ollama is running. Details: {err}"
             ) from err
