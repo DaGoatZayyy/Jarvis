@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import html
+import base64
+import io
 import json
 import os
 import re
@@ -13,6 +15,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import psutil
+import mss
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parent
 HISTORY_FILE = ROOT / "jarvis_history.json"
@@ -203,7 +207,21 @@ def web_search(query: str):
     )
 
 
+def capture_screen_data_url():
+    """Capture the primary desktop only when the user explicitly asks about the screen."""
+    with mss.mss() as capture:
+        monitor = capture.monitors[1]
+        shot = capture.grab(monitor)
+        image = Image.frombytes("RGB", shot.size, shot.rgb)
+        image.thumbnail((1600, 1000))
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG", quality=75, optimize=True)
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return "data:image/jpeg;base64," + encoded
+
+
 TOOL_DEFINITIONS = [
+    {"type": "function", "function": {"name": "describe_screen", "description": "Capture and inspect the current primary screen. Use only when the user explicitly asks what is on their screen or asks for help with something visible.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "get_system_status", "description": "Read current CPU, memory, disk, battery, network totals and available NVIDIA GPU telemetry.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "list_running_apps", "description": "List running process names on this Windows computer.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "open_app", "description": "Open an application from the safe built-in allowlist only.", "parameters": {"type": "object", "properties": {"app_name": {"type": "string", "enum": list(APP_ALLOWLIST)}}, "required": ["app_name"]}}},
@@ -215,6 +233,8 @@ TOOL_DEFINITIONS = [
 
 
 def execute_tool(name: str, arguments: dict):
+    if name == "describe_screen":
+        return "Screen capture requested. The screenshot will be attached for visual analysis."
     if name == "get_system_status":
         return system_status()
     if name == "list_running_apps":
