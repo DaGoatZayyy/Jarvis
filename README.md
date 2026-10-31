@@ -7,7 +7,9 @@ A Windows system-tray voice assistant with push-to-talk, OpenRouter AI, Fish Aud
 - Runs in the Windows system tray without a persistent console window.
 - Hold-to-talk global keybind; releasing it submits the recording.
 - Speech transcription through Google Speech Recognition.
-- OpenRouter AI with tool calling when supported by the selected model/provider, with automatic plain-chat fallback when tools are rejected.
+- Task-based OpenRouter model routing across five free models, with automatic failover for rate limits, unavailable providers, timeouts and empty responses.
+- Coding requests prefer Recursive Flint; complex reasoning prefers Xing4.0; screen/image tasks prefer NVIDIA Nemotron 3.5 Super VL; short quick requests prefer Liquid LFM; general requests prefer Inkling Small.
+- The model actually used and the fallback route are recorded in `jarvis.log`.
 - Persistent conversation history in `jarvis_history.json`.
 - Explicitly requested long-term facts/preferences in `jarvis_memory.json`.
 - Desktop tools for CPU, RAM, disk, battery, network totals and optional NVIDIA GPU telemetry.
@@ -43,7 +45,7 @@ A Windows system-tray voice assistant with push-to-talk, OpenRouter AI, Fish Aud
    Copy-Item .env.example .env
    ```
 
-5. Edit `.env` and enter your own `OPENROUTER_API_KEY` and `FISH_API_KEY`.
+5. Edit `.env` and enter your own `OPENROUTER_API_KEY` and `FISH_API_KEY`. The default `OPENROUTER_MODELS` list already contains the model pool; you can keep it as-is.
 6. Start JARVIS:
 
    ```powershell
@@ -64,6 +66,24 @@ Default keybind: `ctrl+shift+space`.
 4. JARVIS transcribes your speech, asks the AI, generates Fish Audio speech and plays the reply.
 
 Maximum recording duration is 25 seconds. The global keybind can be changed in the tray menu's Settings dialog. The Python `keyboard` package may require appropriate Windows permissions.
+
+## Multi-model routing
+
+JARVIS classifies each request using lightweight keyword rules and puts a suitable model first, followed by the remaining configured models as fallbacks:
+
+| Request type | Preferred model | Why |
+| --- | --- | --- |
+| Coding, debugging, repository work | `recursive/flint-v1.0:free` | Designed for coding-agent tasks |
+| Complex reasoning, planning, analysis | `xingchen-agi/xing4.0-29b-a4b:free` | Reasoning, multi-step planning and tool use |
+| Screen, image or document understanding | `nvidia/nemotron-3.5-super-vl:free` | Supports image/video input and tool calling |
+| Short, simple requests | `liquid/lfm-2.5-2.6b:free` | Compact reasoning model; not selected for coding-heavy tasks |
+| General assistant requests | `thinkingmachines/inkling-small:free` | General reasoning, coding and multimodal tasks |
+
+If a model returns a rate limit, provider error, timeout, unavailable-model response or empty answer, JARVIS tries the next configured model. Models that fail are temporarily cooled down so the next request can start with a healthier option. Authentication and account-credit errors stop failover because changing models cannot fix the API key or account.
+
+Edit `OPENROUTER_MODELS` in your .env file or in Settings to change the pool/order. The full `thinkingmachines/inkling:free` endpoint is deliberately excluded: its OpenRouter listing says prompts and outputs are logged and used to improve models, and warns against sending personal or confidential information. JARVIS includes conversation history and may include saved memory, so that endpoint is not a safe automatic fallback for this setup.
+
+Free model availability and rate limits can change. Fallback does not bypass OpenRouter account-wide free-tier limits.
 
 ## Desktop intelligence examples
 
@@ -116,7 +136,7 @@ During voice playback, press the push-to-talk hotkey to stop the current reply a
 | Setting | Purpose |
 | --- | --- |
 | `OPENROUTER_API_KEY` | OpenRouter credential |
-| `OPENROUTER_MODEL` | Configured OpenRouter model ID |
+| `OPENROUTER_MODELS` | Comma-separated model pool and fallback order |
 | `FISH_API_KEY` | Fish Audio credential |
 | `FISH_VOICE_ID` | Fish Audio voice/reference ID |
 | `FISH_MODEL` | Fish Audio model |
@@ -126,7 +146,7 @@ During voice playback, press the push-to-talk hotkey to stop the current reply a
 | `JARVIS_VOICE_VOLUME` | Playback volume, 0.0-1.0 |
 | `JARVIS_VOICE_SPEED` | Playback speed, 0.5-2.0 |
 
-You can edit `.env` directly or use the tray Settings dialog. Secret fields are blank in the dialog; leaving them blank preserves the saved credentials.
+You can edit `.env` directly or use the tray Settings dialog. The model-pool field accepts comma-separated IDs. Secret fields are blank in the dialog; leaving them blank preserves the saved credentials.
 
 ## Activity log
 
