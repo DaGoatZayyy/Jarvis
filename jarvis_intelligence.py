@@ -270,7 +270,7 @@ def list_project_files(subdirectory: str = ""):
                 results.append(str(path.relative_to(root)))
             if len(results) >= 150:
                 break
-        return "Project files (limited to 150):\\n" + ("\\n".join(results) or "(no files found)")
+        return "Project files (limited to 150):\n" + ("\n".join(results) or "(no files found)")
     except Exception as exc:
         return f"Could not list project files: {exc}"
 
