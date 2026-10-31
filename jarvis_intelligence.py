@@ -293,7 +293,7 @@ def write_project_file(relative_path: str, content: str):
         root, path = _safe_project_path(relative_path)
         if path == root or not path.parent.is_dir():
             return "The target must be a file inside an existing project folder."
-        if path.suffix.casefold() in {".env", ".pem", ".key", ".pfx", ".p12"} or path.name.casefold() in {
+        if path.name.casefold().startswith(".env") or path.suffix.casefold() in {".pem", ".key", ".pfx", ".p12"} or path.name.casefold() in {
             "id_rsa", "id_ed25519", "credentials.json", "secrets.json"
         }:
             return "JARVIS will not edit credential or private-key files."
