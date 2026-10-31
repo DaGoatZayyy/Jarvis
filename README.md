@@ -83,7 +83,7 @@ If a model returns a rate limit, provider error, timeout, unavailable-model resp
 
 Edit `OPENROUTER_MODELS` in your .env file or in Settings to change the pool/order. The full `thinkingmachines/inkling:free` endpoint is deliberately excluded: its OpenRouter listing says prompts and outputs are logged and used to improve models, and warns against sending personal or confidential information. JARVIS includes conversation history and may include saved memory, so that endpoint is not a safe automatic fallback for this setup.
 
-Free model availability and rate limits can change. Fallback does not bypass OpenRouter account-wide free-tier limits.
+OpenRouter currently documents a free-model account limit of 20 requests per minute and 50 requests per day; the daily allowance can change. Failed requests may also count toward the daily cap. If OpenRouter reports an account-wide daily limit, JARVIS stops retrying because switching models will not bypass it. Check OpenRouter's current rate-limit documentation for the latest rules.
 
 ## Desktop intelligence examples
 
