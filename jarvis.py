@@ -476,10 +476,8 @@ class JarvisApp(QObject):
 
         menu = QMenu()
 
-        self.listen_action = QAction("Start listening", menu)
-        self.listen_action.triggered.connect(
-            self.start_listening
-        )
+        self.listen_action = QAction("Start / stop listening", menu)
+        self.listen_action.triggered.connect(self.toggle_listening)
         menu.addAction(self.listen_action)
 
         settings_action = QAction("Settings", menu)
@@ -527,7 +525,7 @@ class JarvisApp(QObject):
     @Slot(str)
     def set_status(self, message: str):
         if message == "__reset_listen_action__":
-            self.listen_action.setText("Start listening")
+            self.listen_action.setText("Start / stop listening")
             return
 
         self.tray.setToolTip(f"J.A.R.V.I.S. - {message}")
@@ -535,6 +533,13 @@ class JarvisApp(QObject):
 
     def on_tray_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self.toggle_listening()
+
+    @Slot()
+    def toggle_listening(self):
+        if self.listening:
+            self.stop_listening()
+        else:
             self.start_listening()
 
     def register_hotkey(self):
@@ -581,7 +586,7 @@ class JarvisApp(QObject):
         self.busy = True
         self.listening = True
         self.stop_event = threading.Event()
-        self.listen_action.setText("Listening - release key to send")
+        self.listen_action.setText("Stop listening")
         self.bridge.status.emit("Listening - hold the keybind and speak")
 
         threading.Thread(
