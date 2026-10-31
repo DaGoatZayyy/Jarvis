@@ -37,6 +37,7 @@ from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from jarvis_intelligence import (TOOL_DEFINITIONS, execute_tool, load_history, save_history, recall_memory, capture_screen_data_url, load_memory, save_memory)
 from jarvis_ai import create_provider
 from jarvis_local import OllamaProvider
+from jarvis_plugins import load_plugins
 
 
 ROOT = Path(__file__).resolve().parent
@@ -430,7 +431,7 @@ def think(cfg: dict, user_text: str) -> str:
                         else "Screen capture is blocked because the latest user request did not explicitly ask about screen content."
                     )
                 elif name == "write_project_file":
-                    edit_terms = ("edit", "modify", "change", "update", "rewrite", "fix the file", "write to")
+                    edit_terms = ("edit", "modify", "change", "update", "rewrite", "fix", "implement", "add feature", "write to")
                     explicit_edit = any(term in user_text.casefold() for term in edit_terms)
                     tool_result = (
                         execute_tool(name, arguments) if explicit_edit
@@ -875,6 +876,7 @@ class JarvisApp(QObject):
 
         self.app = app
         self.settings = load_settings()
+        load_plugins(logger=log, force=True)
 
         self.bridge = Bridge()
 
