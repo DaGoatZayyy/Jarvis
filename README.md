@@ -22,6 +22,11 @@ A Windows system-tray voice assistant with push-to-talk, switchable OpenRouter o
 - Fish Audio voice ID selection plus configurable playback volume and speed.
 - Press the push-to-talk hotkey during JARVIS playback to interrupt the spoken response.
 - Tray notifications, settings dialog, voice test and activity log.
+- Editable long-term memory manager in the tray menu; review, edit, remove or clear saved facts.
+- Hands-free conversation mode: after each spoken response, JARVIS listens for a follow-up and returns to idle after a quiet timeout.
+- Windows voice actions for File Explorer, Task Manager, Settings, show desktop, volume and locking Windows.
+- Project-aware coding tools to list and read files and apply explicitly requested edits with local backups. Choose the project folder from the tray menu.
+- Local Python plugin system: add reviewed plugins to the plugins folder without changing the core application.
 
 ## Requirements
 
@@ -105,6 +110,18 @@ Edit `OPENROUTER_MODELS` in your .env file or in Settings to change the pool/ord
 
 OpenRouter currently documents a free-model account limit of 20 requests per minute and 50 requests per day; the daily allowance can change. Failed requests may also count toward the daily cap. If OpenRouter reports an account-wide daily limit, JARVIS stops retrying because switching models will not bypass it. Check OpenRouter's current rate-limit documentation for the latest rules.
 
+## Windows automation
+
+Ask JARVIS to open File Explorer, open Task Manager or Settings, show the desktop, adjust or mute volume, or lock Windows. These actions use a fixed allowlist; JARVIS does not run arbitrary PowerShell or shell commands. Hands-free conversation mode can be enabled from the tray menu. It listens for a follow-up after each spoken reply and ends the session after a quiet/no-speech timeout; turn it off in the tray menu at any time.
+
+## Project-aware coding assistant
+
+Choose **Set coding project folder** from the tray menu. JARVIS can then list project files and read text files to explain code, trace bugs and understand project structure. When you explicitly ask it to edit a file, it can write the proposed content inside that configured folder and creates a `.jarvis.bak` backup of an existing file first. It refuses paths outside the project and blocks common secret/key files. Review edits and backups before running code. The default project directory is the JARVIS application folder until you select another one.
+
+## Plugin system
+
+Choose **Open plugins folder** in the tray menu. Place reviewed Python `.py` plugins in that folder and restart JARVIS to load them. A plugin must expose `register()` and return a list of entries containing an OpenAI-style function `definition` and a Python `handler` callable. Plugin code runs locally with the same permissions as JARVIS; install only code you trust. See `plugins/README.md` for a template.
+
 ## Desktop intelligence examples
 
 You can ask JARVIS questions such as:
@@ -129,6 +146,7 @@ Search queries are sent to DuckDuckGo. JARVIS receives a small set of result tit
 
 ## Memory and conversation history
 
+- Use **Manage memory** in the tray menu to view, edit, remove or clear saved facts. One memory per line; saving updates `jarvis_memory.json`.
 - Conversation history is stored locally in `jarvis_history.json` and reused for context.
 - Long-term memory is stored locally in `jarvis_memory.json`.
 - Ask JARVIS to remember a non-sensitive preference or fact to save it.
@@ -207,6 +225,8 @@ Do not speak passwords, API keys, financial details or other sensitive informati
 - `jarvis_intelligence.py` — desktop tools, screen capture, web search, memory and history.
 - `jarvis_ai.py` — provider abstraction and explicit provider selection.
 - `jarvis_local.py` — Ollama connectivity, model discovery and local chat requests.
+- `jarvis_plugins.py` — local Python plugin discovery and tool dispatch.
+- `plugins/` — reviewed user-installed extension modules.
 - `requirements.txt` — Python dependencies.
 - `run.bat` — background launch.
 - `.env.example` — safe configuration template.
