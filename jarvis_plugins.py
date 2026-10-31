@@ -21,6 +21,8 @@ def load_plugins(logger=None, force=False):
     global _initialized
     logger = logger or (lambda message: None)
     if _initialized and not force:
+        for filename, error in _errors.items():
+            logger(f"Plugin load failed ({filename}): {error}")
         return plugin_status()
     _loaded.clear()
     _definitions.clear()
