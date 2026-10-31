@@ -9,9 +9,34 @@ from __future__ import annotations
 import queue
 import threading
 import time
+import traceback
 
 import numpy as np
 import sounddevice as sd
+
+
+def get_input_device() -> int:
+    """Return an available input device, preferring the Windows/PortAudio default."""
+    default_devices = sd.default.device
+    if default_devices is not None:
+        try:
+            candidate = default_devices[0]
+            if candidate is not None and int(candidate) >= 0:
+                info = sd.query_devices(int(candidate))
+                if int(info.get("max_input_channels", 0)) > 0:
+                    return int(candidate)
+        except (IndexError, TypeError, ValueError, sd.PortAudioError):
+            pass
+
+    devices = sd.query_devices()
+    for index, info in enumerate(devices):
+        if int(info.get("max_input_channels", 0)) > 0:
+            return index
+
+    raise RuntimeError(
+        "No input microphone is available to PortAudio. Check Windows Sound > Input "
+        "and microphone privacy permissions."
+    )
 
 
 class WakeWordListener:
@@ -73,14 +98,16 @@ class WakeWordListener:
                     except queue.Full:
                         pass
 
+            input_device = get_input_device()
+            device_info = sd.query_devices(input_device)
             with sd.InputStream(
+                device=input_device,
                 samplerate=self.SAMPLE_RATE,
                 channels=1,
                 dtype="int16",
                 blocksize=self.FRAME_SAMPLES,
                 callback=audio_callback,
             ):
-                last_activation = 0.0
                 while not self._stop_event.is_set():
                     try:
                         frame = frames.get(timeout=0.15)
@@ -90,14 +117,14 @@ class WakeWordListener:
                     scores = model.predict(frame)
                     score = max((float(value) for value in scores.values()), default=0.0)
                     now = time.monotonic()
-                    if score >= self.threshold and now - last_activation >= 2.0:
-                        last_activation = now
+                    if score >= self.threshold:
                         self.on_detected()
                         return
 
         except Exception as exc:
             if not self._stop_event.is_set():
+                details = traceback.format_exc(limit=6)
                 self.on_error(
-                    "Hey Jarvis listener could not start: "
-                    f"{exc}. Check microphone permissions and install requirements."
+                    "Hey Jarvis listener failed: "
+                    f"{exc}.\nDiagnostic traceback:\n{details}"
                 )
