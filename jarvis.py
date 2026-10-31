@@ -23,6 +23,8 @@ import numpy as np
 import sounddevice as sd
 import speech_recognition as sr
 
+from jarvis_wakeword import WakeWordListener
+
 from PySide6.QtCore import QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
@@ -48,7 +50,8 @@ DEFAULTS = {
     "FISH_VOICE_ID": "41f0953d7a6b4c078445c7e65d620eeb",
     "FISH_MODEL": "s2.1-pro-free",
     "OPENROUTER_MODEL": "apodex/apodex-1.1-mini:free",
-    "OPENROUTER_MODELS": "recursive/flint-v1.0:free,xingchen-agi/xing4.0-29b-a4b:free,nvidia/nemotron-3.5-super-vl:free,liquid/lfm-2.5-2.6b:free,thinkingmachines/inkling-small:free",
+    "OPENROUTER_MODELS": "thinkingmachines/inkling-small:free,recursive/flint-v1.0:free,xingchen-agi/xing4.0-29b-a4b:free,nvidia/nemotron-3.5-super-vl:free,liquid/lfm-2.5-2.6b:free",
+    "JARVIS_WAKE_WORD_ENABLED": "1",
     "JARVIS_CALLS_YOU": "sir",
     "JARVIS_HOTKEY": "ctrl+shift+space",
     "JARVIS_SPEECH_LANGUAGE": "en-US",
@@ -150,7 +153,7 @@ MODEL_CATALOG = {
     "xingchen-agi/xing4.0-29b-a4b:free": "reasoning, planning and desktop tool use",
     "nvidia/nemotron-3.5-super-vl:free": "screen, image and document understanding",
     "liquid/lfm-2.5-2.6b:free": "quick, lightweight questions and extraction",
-    "thinkingmachines/inkling-small:free": "general assistant, reasoning and multimodal tasks",
+    "thinkingmachines/inkling-small:free": "default general conversation, questions and everyday assistant tasks",
     "thinkingmachines/inkling:free": "general agentic tasks (not enabled by default)",
 }
 
@@ -230,13 +233,14 @@ def route_models(cfg: dict, user_text: str) -> list[str]:
             "nvidia/nemotron-3.5-super-vl:free",
             "recursive/flint-v1.0:free",
         ]
-    elif len(text.split()) <= 12:
+    elif any(term in text for term in ("extract", "classify", "parse this", "quick lookup", "brief summary")):
         preferred = [
             "liquid/lfm-2.5-2.6b:free",
             "thinkingmachines/inkling-small:free",
             "xingchen-agi/xing4.0-29b-a4b:free",
         ]
     else:
+        # Inkling Small is the everyday default for questions and conversation.
         preferred = [
             "thinkingmachines/inkling-small:free",
             "xingchen-agi/xing4.0-29b-a4b:free",
@@ -496,7 +500,7 @@ def record_until_release(stop_event: threading.Event) -> np.ndarray:
             blocksize=int(SAMPLE_RATE * BLOCK_SECONDS),
             callback=callback,
         ):
-            while not stop_event.is_set():
+            while True:
                 elapsed = time.monotonic() - start_time
 
                 if elapsed >= MAX_RECORD_SECONDS:
@@ -522,11 +526,84 @@ def record_until_release(stop_event: threading.Event) -> np.ndarray:
                     if level >= threshold:
                         started = True
 
+                # Process at least one audio block after key-up so a fast
+                # release cannot race the worker before its stream opens.
+                if stop_event.is_set():
+                    break
+
         if not started or not captured:
             raise AssistantError(
                 "No speech detected. Hold the keybind while speaking, then release it."
             )
 
+        return np.concatenate(captured, axis=0)
+
+    except AssistantError:
+        raise
+    except Exception as err:
+        raise AssistantError(
+            f"Microphone error: {err}. Check Windows microphone permissions and input device."
+        ) from err
+
+
+def record_until_silence(stop_event: threading.Event) -> np.ndarray:
+    """Record a wake-word command until speech has been quiet for a short period."""
+    blocks = queue.Queue()
+
+    def callback(indata, frames, timing, status):
+        blocks.put(indata.copy())
+
+    captured = []
+    started = False
+    start_time = time.monotonic()
+    last_voice_time = None
+    ambient_levels = []
+    threshold = 280.0
+
+    try:
+        with sd.InputStream(
+            samplerate=SAMPLE_RATE,
+            channels=1,
+            dtype="int16",
+            blocksize=int(SAMPLE_RATE * BLOCK_SECONDS),
+            callback=callback,
+        ):
+            while True:
+                now = time.monotonic()
+                elapsed = now - start_time
+
+                if elapsed >= MAX_RECORD_SECONDS:
+                    break
+                if stop_event.is_set() and captured:
+                    break
+
+                try:
+                    block = blocks.get(timeout=0.1)
+                except queue.Empty:
+                    if not started and elapsed >= START_TIMEOUT_SECONDS:
+                        raise AssistantError(
+                            "Wake word detected, but no command was heard. Say 'Hey Jarvis' and then your request."
+                        )
+                    continue
+
+                captured.append(block)
+                level = float(np.sqrt(np.mean(block.astype(np.float32) ** 2)))
+
+                if not started:
+                    if elapsed < 0.6:
+                        ambient_levels.append(level)
+                    ambient = float(np.median(ambient_levels)) if ambient_levels else 0.0
+                    threshold = max(280.0, ambient * 2.8)
+                    if level >= threshold:
+                        started = True
+                        last_voice_time = now
+                elif level >= threshold:
+                    last_voice_time = now
+                elif last_voice_time is not None and now - last_voice_time >= SILENCE_SECONDS:
+                    break
+
+        if not started or not captured:
+            raise AssistantError("No command speech was detected after the wake word.")
         return np.concatenate(captured, axis=0)
 
     except AssistantError:
@@ -545,6 +622,8 @@ class Bridge(QObject):
     audio_ready = Signal(bytes)
     hotkey_pressed = Signal()
     hotkey_released = Signal()
+    wakeword_detected = Signal()
+    wakeword_error = Signal(str)
     processing_finished = Signal()
 
 
@@ -572,6 +651,7 @@ class SettingsDialog(QDialog):
             ("FISH_VOICE_ID", "Fish Audio voice ID", False),
             ("FISH_MODEL", "Fish Audio model", False),
             ("JARVIS_HOTKEY", "Global keybind", False),
+            ("JARVIS_WAKE_WORD_ENABLED", "Enable Hey Jarvis wake word (1=yes, 0=no)", False),
             ("JARVIS_CALLS_YOU", "How JARVIS addresses you", False),
             ("JARVIS_SPEECH_LANGUAGE", "Speech language", False),
             ("JARVIS_VOICE_VOLUME", "Voice volume (0.0-1.0)", False),
@@ -647,6 +727,8 @@ class JarvisApp(QObject):
         self.bridge.audio_ready.connect(self.play_audio)
         self.bridge.hotkey_pressed.connect(self.start_listening)
         self.bridge.hotkey_released.connect(self.stop_listening)
+        self.bridge.wakeword_detected.connect(self.start_wake_listening)
+        self.bridge.wakeword_error.connect(self.on_wakeword_error)
         self.bridge.processing_finished.connect(self.finish_processing)
 
         # busy remains true through TTS playback, preventing overlapping sessions.
@@ -654,6 +736,8 @@ class JarvisApp(QObject):
         self.listening = False
         self.stop_event = None
         self.hotkey_handles = []
+        self.wake_listener = None
+        self.capture_mode = "hotkey"
 
         self.activity_window = None
 
@@ -699,6 +783,7 @@ class JarvisApp(QObject):
 
         self.register_hotkey()
         self.set_status("Ready")
+        self.start_wake_listener()
 
         if (
             not self.settings.get("OPENROUTER_API_KEY")
@@ -729,6 +814,40 @@ class JarvisApp(QObject):
     def on_tray_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self.toggle_listening()
+
+    def wake_word_enabled(self) -> bool:
+        value = str(self.settings.get("JARVIS_WAKE_WORD_ENABLED", "1")).strip().casefold()
+        return value not in ("0", "false", "no", "off", "disabled")
+
+    def start_wake_listener(self):
+        if not self.wake_word_enabled() or self.busy or self.wake_listener is not None:
+            return
+        listener = WakeWordListener(
+            on_detected=lambda: self.bridge.wakeword_detected.emit(),
+            on_error=lambda message: self.bridge.wakeword_error.emit(message),
+        )
+        self.wake_listener = listener
+        listener.start()
+        self.bridge.status.emit("Ready - listening for Hey Jarvis")
+
+    def stop_wake_listener(self):
+        listener = self.wake_listener
+        self.wake_listener = None
+        if listener is not None:
+            listener.stop()
+
+    @Slot(str)
+    def on_wakeword_error(self, message: str):
+        self.wake_listener = None
+        self.show_error(message)
+        self.bridge.status.emit("Ready - wake word unavailable; push-to-talk still works")
+
+    @Slot()
+    def start_wake_listening(self):
+        if self.busy:
+            return
+        log("Wake word detected: Hey Jarvis")
+        self.start_listening(source="wake")
 
     @Slot()
     def toggle_listening(self):
@@ -774,7 +893,7 @@ class JarvisApp(QObject):
             )
 
     @Slot()
-    def start_listening(self):
+    def start_listening(self, source="hotkey"):
         # Pressing push-to-talk during playback interrupts the current reply.
         if self.busy:
             if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
@@ -785,15 +904,18 @@ class JarvisApp(QObject):
             else:
                 return
 
+        self.stop_wake_listener()
         self.busy = True
         self.listening = True
+        self.capture_mode = source
         self.stop_event = threading.Event()
         self.listen_action.setText("Stop listening")
-        self.bridge.status.emit("Listening - hold the keybind and speak")
+        prompt = "Listening - speak after Hey Jarvis" if source == "wake" else "Listening - hold the keybind and speak"
+        self.bridge.status.emit(prompt)
 
         threading.Thread(
             target=self._listen_worker,
-            args=(self.stop_event,),
+            args=(self.stop_event, source),
             daemon=True
         ).start()
 
@@ -810,12 +932,17 @@ class JarvisApp(QObject):
         self.stop_event = None
         self.listen_action.setText("Start listening")
         self.bridge.status.emit("Ready")
+        self.start_wake_listener()
 
-    def _listen_worker(self, stop_event: threading.Event):
+    def _listen_worker(self, stop_event: threading.Event, source="hotkey"):
         audio_queued = False
         try:
-            self.bridge.status.emit("Listening - hold the keybind and speak")
-            raw_audio = record_until_release(stop_event)
+            if source == "wake":
+                self.bridge.status.emit("Hey Jarvis detected - listening for your request")
+                raw_audio = record_until_silence(stop_event)
+            else:
+                self.bridge.status.emit("Listening - hold the keybind and speak")
+                raw_audio = record_until_release(stop_event)
 
             audio = sr.AudioData(raw_audio.tobytes(), SAMPLE_RATE, 2)
             self.bridge.status.emit("Transcribing speech...")
@@ -960,6 +1087,8 @@ class JarvisApp(QObject):
             self.settings = load_settings()
             self._apply_voice_settings()
             self.register_hotkey()
+            self.stop_wake_listener()
+            self.start_wake_listener()
 
             self.tray.showMessage(
                 "Settings saved",
@@ -979,6 +1108,7 @@ class JarvisApp(QObject):
             )
             return
 
+        self.stop_wake_listener()
         self.busy = True
         threading.Thread(target=self._test_voice_worker, daemon=True).start()
 
@@ -1045,6 +1175,7 @@ class JarvisApp(QObject):
 
     @Slot()
     def exit_app(self):
+        self.stop_wake_listener()
         if self.stop_event is not None:
             self.stop_event.set()
         for handle in self.hotkey_handles:
