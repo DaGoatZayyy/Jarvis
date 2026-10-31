@@ -183,6 +183,7 @@ During voice playback, press the push-to-talk hotkey to stop the current reply a
 | `FISH_VOICE_ID` | Fish Audio voice/reference ID |
 | `FISH_MODEL` | Fish Audio model |
 | `JARVIS_HOTKEY` | Global push-to-talk combination |
+| `JARVIS_PROJECT_DIR` | Optional coding project root selected from the tray menu |
 | `JARVIS_WAKE_WORD_ENABLED` | Enable local "Hey Jarvis" listener (`1` or `0`) |
 | `JARVIS_CALLS_YOU` | How JARVIS addresses you |
 | `JARVIS_SPEECH_LANGUAGE` | Speech recognition locale |
@@ -225,6 +226,8 @@ Do not speak passwords, API keys, financial details or other sensitive informati
 - `jarvis_intelligence.py` — desktop tools, screen capture, web search, memory and history.
 - `jarvis_ai.py` — provider abstraction and explicit provider selection.
 - `jarvis_local.py` — Ollama connectivity, model discovery and local chat requests.
+- `jarvis_plugins.py` — local Python plugin discovery and tool dispatch.
+- `plugins/` — reviewed user-installed extension modules.
 - `jarvis_plugins.py` — local Python plugin discovery and tool dispatch.
 - `plugins/` — reviewed user-installed extension modules.
 - `requirements.txt` — Python dependencies.
