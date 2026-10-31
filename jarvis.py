@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
-from jarvis_intelligence import (TOOL_DEFINITIONS, execute_tool, load_history, save_history, recall_memory)
+from jarvis_intelligence import (TOOL_DEFINITIONS, execute_tool, load_history, save_history, recall_memory, capture_screen_data_url)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -137,6 +137,7 @@ def system_prompt(cfg: dict) -> str:
         f'Address the user as "{title}". '
         "Be calm, precise and helpful. "
         "Your response will be spoken aloud, so use natural spoken language. "
+        "Use desktop tools when they help. Only capture the screen when the user explicitly asks about visible screen content. Never launch an app unless asked. "
         "Avoid markdown, lists, emojis, URLs and code unless requested. "
         f"The local date and time is "
         f"{time.strftime('%A, %B %d, %Y, %I:%M %p')}."
@@ -229,6 +230,16 @@ def think(cfg: dict, user_text: str) -> str:
                     "tool_call_id": call.get("id", ""),
                     "content": str(tool_result)[:5000],
                 })
+                if name == "describe_screen":
+                    # Screen contents are only captured after an explicit user request.
+                    screen_data = capture_screen_data_url()
+                    request_messages.append({
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Analyze this screenshot and answer the user's screen-related question. Do not infer private details that are not visible."},
+                            {"type": "image_url", "image_url": {"url": screen_data}},
+                        ],
+                    })
             continue
         content = message.get("content")
         if not isinstance(content, str) or not content.strip():
