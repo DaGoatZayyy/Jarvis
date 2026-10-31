@@ -888,6 +888,7 @@ class JarvisApp(QObject):
         self.hotkey_handles = []
         self.wake_listener = None
         self.capture_mode = "hotkey"
+        self.conversation_active = False
 
         self.activity_window = None
 
@@ -909,6 +910,11 @@ class JarvisApp(QObject):
         self.listen_action.triggered.connect(self.toggle_listening)
         menu.addAction(self.listen_action)
 
+        self.conversation_action = QAction("Hands-free conversation mode", menu)
+        self.conversation_action.setCheckable(True)
+        self.conversation_action.toggled.connect(self.toggle_conversation_mode)
+        menu.addAction(self.conversation_action)
+
         self.local_ai_action = QAction("Enable Local AI", menu)
         self.local_ai_action.setCheckable(True)
         self.local_ai_action.setChecked(
@@ -925,6 +931,18 @@ class JarvisApp(QObject):
         settings_action = QAction("Settings", menu)
         settings_action.triggered.connect(self.open_settings)
         menu.addAction(settings_action)
+
+        memory_action = QAction("Manage memory", menu)
+        memory_action.triggered.connect(self.open_memory)
+        menu.addAction(memory_action)
+
+        project_action = QAction("Set coding project folder", menu)
+        project_action.triggered.connect(self.set_project_folder)
+        menu.addAction(project_action)
+
+        plugins_action = QAction("Open plugins folder", menu)
+        plugins_action.triggered.connect(self.open_plugins_folder)
+        menu.addAction(plugins_action)
 
         test_action = QAction("Test Fish Audio voice", menu)
         test_action.triggered.connect(self.test_voice)
@@ -1097,14 +1115,19 @@ class JarvisApp(QObject):
         self.listening = False
         self.stop_event = None
         self.listen_action.setText("Start listening")
+        if self.conversation_active:
+            self.conversation_action.setChecked(True)
+            self.start_listening(source="conversation")
+            return
+        self.conversation_action.setChecked(False)
         self.bridge.status.emit("Ready")
         self.start_wake_listener()
 
     def _listen_worker(self, stop_event: threading.Event, source="hotkey"):
         audio_queued = False
         try:
-            if source == "wake":
-                self.bridge.status.emit("Hey Jarvis detected - listening for your request")
+            if source in ("wake", "conversation"):
+                self.bridge.status.emit("Hey Jarvis detected - listening for your request" if source == "wake" else "Hands-free mode - listening for your next request")
                 raw_audio = record_until_silence(stop_event)
             else:
                 self.bridge.status.emit("Microphone recording active")
@@ -1138,6 +1161,8 @@ class JarvisApp(QObject):
             self.bridge.audio_ready.emit(audio_data)
 
         except Exception as err:
+            if source == "conversation":
+                self.conversation_active = False
             self.bridge.error.emit(str(err))
         finally:
             # Successful audio is still busy until playback ends.
@@ -1240,6 +1265,51 @@ class JarvisApp(QObject):
                 pass
 
         self.audio_temp_path = None
+
+    @Slot(bool)
+    def toggle_conversation_mode(self, enabled: bool):
+        self.conversation_active = bool(enabled)
+        if enabled:
+            self.stop_wake_listener()
+            if not self.busy:
+                self.start_listening(source="conversation")
+            else:
+                self.tray.showMessage("Hands-free conversation", "Mode will begin after the current response finishes.", QSystemTrayIcon.MessageIcon.Information, 3000)
+        else:
+            if self.listening and self.capture_mode == "conversation" and self.stop_event:
+                self.stop_event.set()
+            if not self.busy:
+                self.start_wake_listener()
+
+    @Slot()
+    def open_memory(self):
+        dialog = MemoryDialog()
+        dialog.exec()
+
+    @Slot()
+    def set_project_folder(self):
+        current = load_settings().get("JARVIS_PROJECT_DIR", "") or str(ROOT)
+        folder = QFileDialog.getExistingDirectory(self.app.activeWindow(), "Choose coding project folder", current)
+        if not folder:
+            return
+        try:
+            save_settings({"JARVIS_PROJECT_DIR": folder})
+            self.settings = load_settings()
+            os.environ["JARVIS_PROJECT_DIR"] = folder
+            self.tray.showMessage("Coding project selected", folder, QSystemTrayIcon.MessageIcon.Information, 4000)
+            log(f"Coding project directory set: {folder}")
+        except OSError as err:
+            self.show_error(f"Could not save project directory: {err}")
+
+    @Slot()
+    def open_plugins_folder(self):
+        folder = ROOT / "plugins"
+        folder.mkdir(exist_ok=True)
+        try:
+            os.startfile(str(folder))
+            self.tray.showMessage("J.A.R.V.I.S. plugins", "Place reviewed Python plugins in this folder, then restart JARVIS.", QSystemTrayIcon.MessageIcon.Information, 4000)
+        except OSError as err:
+            self.show_error(f"Could not open plugins folder: {err}")
 
     @Slot(bool)
     def toggle_local_ai(self, enabled: bool):
