@@ -239,13 +239,23 @@ def think(cfg: dict, user_text: str) -> str:
                         arguments = {}
                 except (json.JSONDecodeError, TypeError):
                     arguments = {}
-                tool_result = execute_tool(name, arguments)
+                if name == "describe_screen":
+                    explicit_screen_request = any(term in user_text.casefold() for term in (
+                        "screen", "screenshot", "display", "what's on my monitor",
+                        "what is on my monitor", "visible window",
+                    ))
+                    tool_result = (
+                        execute_tool(name, arguments) if explicit_screen_request
+                        else "Screen capture is blocked because the latest user request did not explicitly ask about screen content."
+                    )
+                else:
+                    tool_result = execute_tool(name, arguments)
                 request_messages.append({
                     "role": "tool",
                     "tool_call_id": call.get("id", ""),
                     "content": str(tool_result)[:5000],
                 })
-                if name == "describe_screen":
+                if name == "describe_screen" and explicit_screen_request:
                     # Screen contents are only captured after an explicit user request.
                     screen_data = capture_screen_data_url()
                     request_messages.append({
