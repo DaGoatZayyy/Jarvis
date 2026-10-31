@@ -8,8 +8,8 @@ A Windows system-tray voice assistant with push-to-talk, OpenRouter AI, Fish Aud
 - Hold-to-talk global keybind; releasing it submits the recording.
 - Optional always-on local "Hey Jarvis" wake-word listener; after activation, it records a command and stops automatically after a short silence. Wake-word detection runs locally on-device.
 - Speech transcription through Google Speech Recognition.
-- Task-based OpenRouter model routing across five free models, with automatic failover for rate limits, unavailable providers, timeouts and empty responses.
-- Coding requests prefer Recursive Flint; complex reasoning prefers Xing4.0; screen/image tasks prefer NVIDIA Nemotron 3.5 Super VL; short quick requests prefer Liquid LFM; general requests prefer Inkling Small.
+- Task-based OpenRouter model routing across four compatible free models, with automatic failover for rate limits, unavailable providers, timeouts and empty responses.
+- General questions and everyday conversation default to Xing4.0; coding requests prefer Recursive Flint; screen/image tasks prefer NVIDIA Nemotron 3.5 Super VL; explicit quick extraction requests prefer Liquid LFM.
 - The model actually used and the fallback route are recorded in `jarvis.log`.
 - Persistent conversation history in `jarvis_history.json`.
 - Explicitly requested long-term facts/preferences in `jarvis_memory.json`.
@@ -86,11 +86,11 @@ JARVIS classifies each request using lightweight keyword rules and puts a suitab
 | Complex reasoning, planning, analysis | `xingchen-agi/xing4.0-29b-a4b:free` | Reasoning, multi-step planning and tool use |
 | Screen, image or document understanding | `nvidia/nemotron-3.5-super-vl:free` | Supports image/video input and tool calling |
 | Explicit quick extraction/classification requests | `liquid/lfm-2.5-2.6b:free` | Compact model for lightweight extraction tasks |
-| General questions, everyday conversation and default requests | `thinkingmachines/inkling-small:free` | Default general-purpose assistant model |
+| General questions, everyday conversation and default requests | `xingchen-agi/xing4.0-29b-a4b:free` | OpenAI-compatible chat endpoint with reasoning and tool calling |
 
-If a model returns a rate limit, provider error, timeout, unavailable-model response or empty answer, JARVIS tries the next configured model. Models that fail are temporarily cooled down so the next request can start with a healthier option. Authentication and account-credit errors stop failover because changing models cannot fix the API key or account.
+Inkling Small and full Inkling are excluded because OpenRouter currently restricts their free endpoints to agentic harnesses; they reject JARVIS normal chat-completions requests with HTTP 403. If another configured model returns this model-specific restriction, JARVIS disables it for the current run and continues with the next model. If a model returns a rate limit, provider error, timeout, unavailable-model response or empty answer, JARVIS tries the next configured model. Models that fail are temporarily cooled down so the next request can start with a healthier option. Authentication and account-credit errors stop failover because changing models cannot fix the API key or account.
 
-Edit `OPENROUTER_MODELS` in your .env file or in Settings to change the pool/order. The full `thinkingmachines/inkling:free` endpoint is deliberately excluded: its OpenRouter listing says prompts and outputs are logged and used to improve models, and warns against sending personal or confidential information. JARVIS includes conversation history and may include saved memory, so that endpoint is not a safe automatic fallback for this setup.
+Edit `OPENROUTER_MODELS` in your .env file or in Settings to change the pool/order. Both Thinking Machines free endpoints are excluded from the normal JARVIS chat pool because OpenRouter restricts them to agentic harnesses. The provider also states that prompts and outputs on those free endpoints may be logged and used to improve its models, so do not route private information through them.
 
 OpenRouter currently documents a free-model account limit of 20 requests per minute and 50 requests per day; the daily allowance can change. Failed requests may also count toward the daily cap. If OpenRouter reports an account-wide daily limit, JARVIS stops retrying because switching models will not bypass it. Check OpenRouter's current rate-limit documentation for the latest rules.
 
