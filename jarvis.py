@@ -300,9 +300,15 @@ def openrouter_post(cfg: dict, payload: dict, candidates: list[str] | None = Non
         except urllib.error.HTTPError as err:
             detail = err.read()[:700].decode("utf-8", "replace")
             failures.append(f"{model}: HTTP {err.code} {detail[:220]}")
-            # Authentication, billing, and malformed-request errors affect the
-            # whole account/request; model switching will not fix them.
-            if err.code in (401, 402, 403):
+            # Account-wide free-tier daily limits affect every free model.
+            # Do not burn more failed attempts by rotating through the pool.
+            lower_detail = detail.casefold()
+            account_daily_limit = err.code == 429 and any(term in lower_detail for term in (
+                "free-models-per-day", "free models per day", "requests per day",
+                "daily limit", "per-day limit",
+            ))
+            # Authentication and billing errors affect the whole account too.
+            if err.code in (401, 402, 403) or account_daily_limit:
                 break
             cooldown = 900 if err.code == 429 else 90 if err.code >= 500 else 30
             with MODEL_COOLDOWN_LOCK:
