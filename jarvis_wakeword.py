@@ -49,7 +49,7 @@ class WakeWordListener:
             from openwakeword.model import Model
 
             # Download only the built-in Hey Jarvis model; it is cached locally.
-            openwakeword.utils.download_models(models=["hey_jarvis"])
+            openwakeword.utils.download_models(model_names=["hey_jarvis_v0.1"])
             model = Model(
                 wakeword_models=["hey_jarvis"],
                 inference_framework="onnx",
