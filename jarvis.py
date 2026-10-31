@@ -50,7 +50,7 @@ DEFAULTS = {
     "FISH_VOICE_ID": "41f0953d7a6b4c078445c7e65d620eeb",
     "FISH_MODEL": "s2.1-pro-free",
     "OPENROUTER_MODEL": "apodex/apodex-1.1-mini:free",
-    "OPENROUTER_MODELS": "thinkingmachines/inkling-small:free,recursive/flint-v1.0:free,xingchen-agi/xing4.0-29b-a4b:free,nvidia/nemotron-3.5-super-vl:free,liquid/lfm-2.5-2.6b:free",
+    "OPENROUTER_MODELS": "xingchen-agi/xing4.0-29b-a4b:free,recursive/flint-v1.0:free,nvidia/nemotron-3.5-super-vl:free,liquid/lfm-2.5-2.6b:free",
     "JARVIS_WAKE_WORD_ENABLED": "1",
     "JARVIS_CALLS_YOU": "sir",
     "JARVIS_HOTKEY": "ctrl+shift+space",
@@ -153,10 +153,12 @@ MODEL_CATALOG = {
     "xingchen-agi/xing4.0-29b-a4b:free": "reasoning, planning and desktop tool use",
     "nvidia/nemotron-3.5-super-vl:free": "screen, image and document understanding",
     "liquid/lfm-2.5-2.6b:free": "quick, lightweight questions and extraction",
-    "thinkingmachines/inkling-small:free": "default general conversation, questions and everyday assistant tasks",
+    "thinkingmachines/inkling-small:free": "agent-harness-only endpoint; incompatible with JARVIS chat completions",
     "thinkingmachines/inkling:free": "general agentic tasks (not enabled by default)",
 }
 
+UNSUPPORTED_MODELS = {"thinkingmachines/inkling-small:free", "thinkingmachines/inkling:free"}
+MODEL_DISABLED = set()
 MODEL_COOLDOWNS = {}
 MODEL_COOLDOWN_LOCK = threading.Lock()
 
@@ -167,15 +169,14 @@ def configured_models(cfg: dict) -> list[str]:
     # Preserve user order while removing duplicates and unknown model IDs.
     valid = []
     for model in models:
-        if model in MODEL_CATALOG and model not in valid and model != "thinkingmachines/inkling:free":
+        if model in MODEL_CATALOG and model not in valid and model not in UNSUPPORTED_MODELS and model not in MODEL_DISABLED:
             valid.append(model)
     if not valid:
         valid = [
-            "recursive/flint-v1.0:free",
             "xingchen-agi/xing4.0-29b-a4b:free",
+            "recursive/flint-v1.0:free",
             "nvidia/nemotron-3.5-super-vl:free",
             "liquid/lfm-2.5-2.6b:free",
-            "thinkingmachines/inkling-small:free",
         ]
     return valid
 
@@ -209,40 +210,34 @@ def route_models(cfg: dict, user_text: str) -> list[str]:
     if any(term in text for term in vision_terms):
         preferred = [
             "nvidia/nemotron-3.5-super-vl:free",
-            "thinkingmachines/inkling-small:free",
             "xingchen-agi/xing4.0-29b-a4b:free",
         ]
     elif any(term in text for term in coding_terms):
         preferred = [
             "recursive/flint-v1.0:free",
             "xingchen-agi/xing4.0-29b-a4b:free",
-            "thinkingmachines/inkling-small:free",
             "nvidia/nemotron-3.5-super-vl:free",
         ]
     elif any(term in text for term in reasoning_terms):
         preferred = [
             "xingchen-agi/xing4.0-29b-a4b:free",
             "nvidia/nemotron-3.5-super-vl:free",
-            "thinkingmachines/inkling-small:free",
             "recursive/flint-v1.0:free",
         ]
     elif any(term in text for term in desktop_terms):
         preferred = [
             "xingchen-agi/xing4.0-29b-a4b:free",
-            "thinkingmachines/inkling-small:free",
             "nvidia/nemotron-3.5-super-vl:free",
             "recursive/flint-v1.0:free",
         ]
     elif any(term in text for term in ("extract", "classify", "parse this", "quick lookup", "brief summary")):
         preferred = [
             "liquid/lfm-2.5-2.6b:free",
-            "thinkingmachines/inkling-small:free",
             "xingchen-agi/xing4.0-29b-a4b:free",
         ]
     else:
-        # Inkling Small is the everyday default for questions and conversation.
+        # Xing4.0 is the everyday default for questions and conversation.
         preferred = [
-            "thinkingmachines/inkling-small:free",
             "xingchen-agi/xing4.0-29b-a4b:free",
             "liquid/lfm-2.5-2.6b:free",
             "recursive/flint-v1.0:free",
@@ -311,7 +306,20 @@ def openrouter_post(cfg: dict, payload: dict, candidates: list[str] | None = Non
                 "free-models-per-day", "free models per day", "requests per day",
                 "daily limit", "per-day limit",
             ))
-            # Authentication and billing errors affect the whole account too.
+            # The free Inkling endpoints reject normal chat-completions clients
+            # with this model-specific 403. Disable them and continue failover.
+            harness_only = err.code == 403 and any(term in lower_detail for term in (
+                "only available on agentic harnesses",
+                "try plugging it into a coding agent",
+                "agentic harnesses",
+            ))
+            if harness_only:
+                with MODEL_COOLDOWN_LOCK:
+                    MODEL_DISABLED.add(model)
+                log(f"Model disabled for this JARVIS session (agentic-harness-only): {model}")
+                continue
+
+            # Authentication and account permission/billing errors affect all models.
             if err.code in (401, 402, 403) or account_daily_limit:
                 break
             cooldown = 900 if err.code == 429 else 90 if err.code >= 500 else 30
