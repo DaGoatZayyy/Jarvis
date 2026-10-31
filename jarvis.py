@@ -137,7 +137,7 @@ def system_prompt(cfg: dict) -> str:
         f'Address the user as "{title}". '
         "Be calm, precise and helpful. "
         "Your response will be spoken aloud, so use natural spoken language. "
-        "Use desktop tools when they help. Only capture the screen when the user explicitly asks about visible screen content. Never launch an app unless asked. "
+        "Use desktop tools when they help. Only capture the screen when the user explicitly asks about visible screen content. Never launch an app unless asked. Only save a memory when the user clearly asks you to remember it. "
         "Avoid markdown, lists, emojis, URLs and code unless requested. "
         f"The local date and time is "
         f"{time.strftime('%A, %B %d, %Y, %I:%M %p')}."
@@ -210,7 +210,22 @@ def think(cfg: dict, user_text: str) -> str:
             "tool_choice": "auto",
             "max_tokens": 1200,
         }
-        result = openrouter_post(cfg, payload)
+        try:
+            result = openrouter_post(cfg, payload)
+        except AssistantError as err:
+            # Some free model/provider routes reject function calling. Retry as plain chat.
+            detail = str(err).casefold()
+            unsupported_tools = any(term in detail for term in (
+                "tool", "function", "unsupported", "not support", "unknown parameter"
+            ))
+            if not unsupported_tools:
+                raise
+            fallback_payload = {
+                "model": cfg.get("OPENROUTER_MODEL", DEFAULTS["OPENROUTER_MODEL"]),
+                "messages": request_messages,
+                "max_tokens": 1200,
+            }
+            result = openrouter_post(cfg, fallback_payload)
         message = result.get("message") or {}
         tool_calls = message.get("tool_calls") or []
         if tool_calls:
