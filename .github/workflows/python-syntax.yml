@@ -1,0 +1,16 @@
+name: Python syntax check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  compile:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Python files
+        run: python -m compileall -q .
