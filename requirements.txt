@@ -3,3 +3,6 @@ keyboard>=0.13.5
 SpeechRecognition>=3.14
 sounddevice>=0.5.1
 numpy>=2.1
+psutil>=6.1
+mss>=10.0
+Pillow>=11.0
