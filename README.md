@@ -228,8 +228,6 @@ Do not speak passwords, API keys, financial details or other sensitive informati
 - `jarvis_local.py` — Ollama connectivity, model discovery and local chat requests.
 - `jarvis_plugins.py` — local Python plugin discovery and tool dispatch.
 - `plugins/` — reviewed user-installed extension modules.
-- `jarvis_plugins.py` — local Python plugin discovery and tool dispatch.
-- `plugins/` — reviewed user-installed extension modules.
 - `requirements.txt` — Python dependencies.
 - `run.bat` — background launch.
 - `.env.example` — safe configuration template.
