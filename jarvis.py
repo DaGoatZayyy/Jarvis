@@ -1173,7 +1173,10 @@ class JarvisApp(QObject):
         except Exception as err:
             if source == "conversation":
                 self.conversation_active = False
-            self.bridge.error.emit(str(err))
+                if not stop_event.is_set():
+                    self.bridge.error.emit(str(err))
+            else:
+                self.bridge.error.emit(str(err))
         finally:
             # Successful audio is still busy until playback ends.
             if not audio_queued:
