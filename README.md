@@ -6,6 +6,7 @@ A Windows system-tray voice assistant with push-to-talk, OpenRouter AI, Fish Aud
 
 - Runs in the Windows system tray without a persistent console window.
 - Hold-to-talk global keybind; releasing it submits the recording.
+- Optional always-on local "Hey Jarvis" wake-word listener; after activation, it records a command and stops automatically after a short silence. Wake-word detection runs locally on-device.
 - Speech transcription through Google Speech Recognition.
 - Task-based OpenRouter model routing across five free models, with automatic failover for rate limits, unavailable providers, timeouts and empty responses.
 - Coding requests prefer Recursive Flint; complex reasoning prefers Xing4.0; screen/image tasks prefer NVIDIA Nemotron 3.5 Super VL; short quick requests prefer Liquid LFM; general requests prefer Inkling Small.
@@ -52,7 +53,7 @@ A Windows system-tray voice assistant with push-to-talk, OpenRouter AI, Fish Aud
    .\run.bat
    ```
 
-The batch file uses `pythonw` so JARVIS runs without a persistent command window. For troubleshooting, run `py jarvis.py` from PowerShell to see errors.
+The batch file uses `pythonw` so JARVIS runs without a persistent command window. On first startup, openWakeWord may download/cache its wake-word model. For troubleshooting, run `py jarvis.py` from PowerShell to see errors.
 
 **Never commit or share your real `.env` file.** The `.env.example` file contains placeholders only.
 
@@ -65,6 +66,14 @@ Default keybind: `ctrl+shift+space`.
 3. Release the combination to submit the recording.
 4. JARVIS transcribes your speech, asks the AI, generates Fish Audio speech and plays the reply.
 
+## Hey Jarvis wake word
+
+- The wake-word listener starts automatically when JARVIS starts (unless disabled in Settings).
+- Say **"Hey Jarvis"**, pause briefly, then speak your request. JARVIS records until it detects about 1.25 seconds of silence, or reaches the 25-second limit.
+- Wake-word detection uses openWakeWord locally on your PC. The wake-word audio is not sent to a cloud service. After activation, the captured command still follows the existing Google Speech Recognition, OpenRouter and Fish Audio flow.
+- The microphone remains active for local wake-word detection while JARVIS is idle. Stop JARVIS or set `JARVIS_WAKE_WORD_ENABLED=0` in `.env` to disable it.
+- If the wake-word model or microphone cannot initialize, the tray log reports the error; push-to-talk remains available.
+
 Maximum recording duration is 25 seconds. The global keybind can be changed in the tray menu's Settings dialog. The Python `keyboard` package may require appropriate Windows permissions.
 
 ## Multi-model routing
@@ -76,8 +85,8 @@ JARVIS classifies each request using lightweight keyword rules and puts a suitab
 | Coding, debugging, repository work | `recursive/flint-v1.0:free` | Designed for coding-agent tasks |
 | Complex reasoning, planning, analysis | `xingchen-agi/xing4.0-29b-a4b:free` | Reasoning, multi-step planning and tool use |
 | Screen, image or document understanding | `nvidia/nemotron-3.5-super-vl:free` | Supports image/video input and tool calling |
-| Short, simple requests | `liquid/lfm-2.5-2.6b:free` | Compact reasoning model; not selected for coding-heavy tasks |
-| General assistant requests | `thinkingmachines/inkling-small:free` | General reasoning, coding and multimodal tasks |
+| Explicit quick extraction/classification requests | `liquid/lfm-2.5-2.6b:free` | Compact model for lightweight extraction tasks |
+| General questions, everyday conversation and default requests | `thinkingmachines/inkling-small:free` | Default general-purpose assistant model |
 
 If a model returns a rate limit, provider error, timeout, unavailable-model response or empty answer, JARVIS tries the next configured model. Models that fail are temporarily cooled down so the next request can start with a healthier option. Authentication and account-credit errors stop failover because changing models cannot fix the API key or account.
 
@@ -141,6 +150,7 @@ During voice playback, press the push-to-talk hotkey to stop the current reply a
 | `FISH_VOICE_ID` | Fish Audio voice/reference ID |
 | `FISH_MODEL` | Fish Audio model |
 | `JARVIS_HOTKEY` | Global push-to-talk combination |
+| `JARVIS_WAKE_WORD_ENABLED` | Enable local "Hey Jarvis" listener (`1` or `0`) |
 | `JARVIS_CALLS_YOU` | How JARVIS addresses you |
 | `JARVIS_SPEECH_LANGUAGE` | Speech recognition locale |
 | `JARVIS_VOICE_VOLUME` | Playback volume, 0.0-1.0 |
