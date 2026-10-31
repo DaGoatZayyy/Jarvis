@@ -183,9 +183,8 @@ def route_models(cfg: dict, user_text: str) -> list[str]:
     models = configured_models(cfg)
 
     vision_terms = (
-        "screen", "screenshot", "monitor", "on my display", "what's on",
-        "what is on", "image", "picture", "photo", "diagram", "document",
-        "read this image", "look at this",
+        "screen", "screenshot", "monitor", "display", "image", "picture",
+        "photo", "diagram", "document", "chart", "visual", "read this image",
     )
     coding_terms = (
         "code", "coding", "program", "script", "python", "javascript",
@@ -260,6 +259,9 @@ def openrouter_post(cfg: dict, payload: dict, candidates: list[str] | None = Non
         raise AssistantError("OpenRouter API key is missing. Open Settings to add it.")
 
     candidates = candidates or configured_models(cfg)
+    with MODEL_COOLDOWN_LOCK:
+        ready_candidates = [m for m in candidates if MODEL_COOLDOWNS.get(m, 0) <= time.monotonic()]
+    candidates = ready_candidates or candidates
     failures = []
 
     for model in candidates:
