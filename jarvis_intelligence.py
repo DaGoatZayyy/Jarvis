@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+import ctypes
 import base64
 import io
 import json
@@ -17,6 +18,7 @@ from pathlib import Path
 import psutil
 import mss
 from PIL import Image
+from jarvis_plugins import execute_plugin, plugin_tools
 
 ROOT = Path(__file__).resolve().parent
 HISTORY_FILE = ROOT / "jarvis_history.json"
@@ -220,6 +222,119 @@ def capture_screen_data_url():
     return "data:image/jpeg;base64," + encoded
 
 
+
+def _project_root():
+    configured = os.environ.get("JARVIS_PROJECT_DIR", "").strip()
+    root = Path(configured).expanduser() if configured else ROOT
+    return root.resolve()
+
+
+def _safe_project_path(relative_path: str):
+    root = _project_root()
+    candidate = (root / str(relative_path)).resolve()
+    if candidate != root and root not in candidate.parents:
+        raise ValueError("That path is outside the configured project directory.")
+    return root, candidate
+
+
+def list_project_files(subdirectory: str = ""):
+    try:
+        root, folder = _safe_project_path(subdirectory or ".")
+        if not folder.is_dir():
+            return "That project directory does not exist."
+        ignored = {".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build"}
+        results = []
+        for path in folder.rglob("*"):
+            if any(part in ignored for part in path.relative_to(root).parts):
+                continue
+            if path.is_file():
+                results.append(str(path.relative_to(root)))
+            if len(results) >= 150:
+                break
+        return "Project files (limited to 150):\\n" + ("\\n".join(results) or "(no files found)")
+    except Exception as exc:
+        return f"Could not list project files: {exc}"
+
+
+def read_project_file(relative_path: str):
+    try:
+        root, path = _safe_project_path(relative_path)
+        if not path.is_file():
+            return "That project file does not exist."
+        if path.stat().st_size > 150_000:
+            return "That file is larger than the 150 KB read limit."
+        return path.read_text(encoding="utf-8", errors="replace")[:150_000]
+    except Exception as exc:
+        return f"Could not read project file: {exc}"
+
+
+def write_project_file(relative_path: str, content: str):
+    """Write only inside the configured project, preserving a .bak copy."""
+    try:
+        root, path = _safe_project_path(relative_path)
+        if path == root or not path.parent.is_dir():
+            return "The target must be a file inside an existing project folder."
+        if path.suffix.casefold() in {".env", ".pem", ".key", ".pfx", ".p12"} or path.name.casefold() in {
+            "id_rsa", "id_ed25519", "credentials.json", "secrets.json"
+        }:
+            return "JARVIS will not edit credential or private-key files."
+        text = str(content)
+        if len(text.encode("utf-8")) > 150_000:
+            return "The proposed file exceeds the 150 KB write limit."
+        if path.exists():
+            if not path.is_file():
+                return "The target is not a regular file."
+            if path.stat().st_size > 150_000:
+                return "The existing file is larger than the 150 KB edit limit."
+            backup = path.with_suffix(path.suffix + ".jarvis.bak")
+            backup.write_bytes(path.read_bytes())
+        temp = path.with_suffix(path.suffix + ".jarvis.tmp")
+        temp.write_text(text, encoding="utf-8")
+        temp.replace(path)
+        return f"Updated {path.relative_to(root)}. A .jarvis.bak backup was created if the file already existed."
+    except Exception as exc:
+        return f"Could not update project file: {exc}"
+
+
+def windows_action(action: str):
+    """Small allowlist of reversible or standard Windows shortcuts/actions."""
+    actions = {
+        "open_file_explorer": "Open File Explorer",
+        "open_task_manager": "Open Task Manager",
+        "open_settings": "Open Windows Settings",
+        "show_desktop": "Show desktop",
+        "volume_up": "Increase system volume",
+        "volume_down": "Decrease system volume",
+        "volume_mute": "Toggle system mute",
+        "lock_workstation": "Lock Windows",
+    }
+    if action not in actions:
+        return "Action not allowed. Available actions: " + ", ".join(actions)
+    try:
+        if action == "open_file_explorer":
+            subprocess.Popen(["explorer.exe"])
+        elif action == "open_task_manager":
+            subprocess.Popen(["taskmgr.exe"])
+        elif action == "open_settings":
+            os.startfile("ms-settings:")
+        elif action == "lock_workstation":
+            ctypes.windll.user32.LockWorkStation()
+        else:
+            user32 = ctypes.windll.user32
+            if action == "show_desktop":
+                # Win+D
+                user32.keybd_event(0x5B, 0, 0, 0)
+                user32.keybd_event(0x44, 0, 0, 0)
+                user32.keybd_event(0x44, 0, 2, 0)
+                user32.keybd_event(0x5B, 0, 2, 0)
+            else:
+                key = {"volume_up": 0xAF, "volume_down": 0xAE, "volume_mute": 0xAD}[action]
+                user32.keybd_event(key, 0, 0, 0)
+                user32.keybd_event(key, 0, 2, 0)
+        return actions[action] + "."
+    except Exception as exc:
+        return f"Windows action failed: {exc}"
+
 TOOL_DEFINITIONS = [
     {"type": "function", "function": {"name": "describe_screen", "description": "Capture and inspect the current primary screen. Use only when the user explicitly asks what is on their screen or asks for help with something visible.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "get_system_status", "description": "Read current CPU, memory, disk, battery, network totals and available NVIDIA GPU telemetry.", "parameters": {"type": "object", "properties": {}, "required": []}}},
@@ -229,6 +344,11 @@ TOOL_DEFINITIONS = [
     {"type": "function", "function": {"name": "recall_memory", "description": "Read the user's saved JARVIS memory when relevant or requested.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "forget_memory", "description": "Remove saved memory entries matching the user's explicit request.", "parameters": {"type": "object", "properties": {"fact": {"type": "string"}}, "required": ["fact"]}}},
     {"type": "function", "function": {"name": "web_search", "description": "Search the web for current information and return a few result titles and links.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
+    {"type": "function", "function": {"name": "windows_action", "description": "Perform one standard Windows desktop action from a fixed safe allowlist.", "parameters": {"type": "object", "properties": {"action": {"type": "string", "enum": ["open_file_explorer", "open_task_manager", "open_settings", "show_desktop", "volume_up", "volume_down", "volume_mute", "lock_workstation"]}}, "required": ["action"]}}},
+    {"type": "function", "function": {"name": "list_project_files", "description": "List files in the configured coding project directory, excluding dependency and version-control folders.", "parameters": {"type": "object", "properties": {"subdirectory": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {"name": "read_project_file", "description": "Read a text file from the configured coding project directory for code analysis.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}}, "required": ["relative_path"]}}},
+    {"type": "function", "function": {"name": "write_project_file", "description": "Edit a project text file only when the user explicitly requested a code edit. Always preserve a backup. Never use for secrets.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}, "content": {"type": "string"}}, "required": ["relative_path", "content"]}}},
+    *plugin_tools(),
 ]
 
 
@@ -249,4 +369,12 @@ def execute_tool(name: str, arguments: dict):
         return forget_memory(arguments.get("fact", ""))
     if name == "web_search":
         return web_search(arguments.get("query", ""))
-    return "Tool not available."
+    if name == "windows_action":
+        return windows_action(arguments.get("action", ""))
+    if name == "list_project_files":
+        return list_project_files(arguments.get("subdirectory", ""))
+    if name == "read_project_file":
+        return read_project_file(arguments.get("relative_path", ""))
+    if name == "write_project_file":
+        return write_project_file(arguments.get("relative_path", ""), arguments.get("content", ""))
+    return execute_plugin(name, arguments) or "Tool not available."
