@@ -409,12 +409,16 @@ def think(cfg: dict, user_text: str) -> str:
             for call in tool_calls:
                 function = call.get("function") or {}
                 name = function.get("name", "")
-                try:
-                    arguments = json.loads(function.get("arguments") or "{}")
-                    if not isinstance(arguments, dict):
+                raw_arguments = function.get("arguments") or {}
+                if isinstance(raw_arguments, dict):
+                    arguments = raw_arguments
+                else:
+                    try:
+                        arguments = json.loads(raw_arguments)
+                        if not isinstance(arguments, dict):
+                            arguments = {}
+                    except (json.JSONDecodeError, TypeError):
                         arguments = {}
-                except (json.JSONDecodeError, TypeError):
-                    arguments = {}
                 if name == "describe_screen":
                     explicit_screen_request = any(term in user_text.casefold() for term in (
                         "screen", "screenshot", "display", "what's on my monitor",
