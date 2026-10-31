@@ -63,6 +63,7 @@ DEFAULTS = {
     "JARVIS_SPEECH_LANGUAGE": "en-US",
     "JARVIS_VOICE_VOLUME": "0.85",
     "JARVIS_VOICE_SPEED": "1.0",
+    "JARVIS_PROJECT_DIR": "",
 }
 
 SAMPLE_RATE = 16000
@@ -147,7 +148,7 @@ def system_prompt(cfg: dict) -> str:
         f'Address the user as "{title}". '
         "Be calm, precise and helpful. "
         "Your response will be spoken aloud, so use natural spoken language. "
-        "Use desktop tools when they help. Only capture the screen when the user explicitly asks about visible screen content. Never launch an app unless asked. Only save a memory when the user clearly asks you to remember it. "
+        "Use desktop tools when they help. Only capture the screen when the user explicitly asks about visible screen content. Never launch an app unless asked. Only save a memory when the user clearly asks you to remember it. Only write or modify project files when the user explicitly asks for an edit; otherwise inspect and explain. "
         "Avoid markdown, lists, emojis, URLs and code unless requested. "
         f"The local date and time is "
         f"{time.strftime('%A, %B %d, %Y, %I:%M %p')}."
@@ -427,6 +428,13 @@ def think(cfg: dict, user_text: str) -> str:
                     tool_result = (
                         execute_tool(name, arguments) if explicit_screen_request
                         else "Screen capture is blocked because the latest user request did not explicitly ask about screen content."
+                    )
+                elif name == "write_project_file":
+                    edit_terms = ("edit", "modify", "change", "update", "rewrite", "fix the file", "write to")
+                    explicit_edit = any(term in user_text.casefold() for term in edit_terms)
+                    tool_result = (
+                        execute_tool(name, arguments) if explicit_edit
+                        else "File writing was blocked because the user has not explicitly requested a code edit."
                     )
                 else:
                     tool_result = execute_tool(name, arguments)
@@ -1094,7 +1102,7 @@ class JarvisApp(QObject):
         self.capture_mode = source
         self.stop_event = threading.Event()
         self.listen_action.setText("Stop listening")
-        prompt = "Listening - speak after Hey Jarvis" if source == "wake" else "Listening - hold the keybind and speak"
+        prompt = "Listening - speak after Hey Jarvis" if source == "wake" else ("Hands-free mode - speak now" if source == "conversation" else "Listening - hold the keybind and speak")
         self.bridge.status.emit(prompt)
 
         threading.Thread(
