@@ -54,7 +54,17 @@ def save_history(messages):
 
 def load_memory():
     data = _read_json(MEMORY_FILE, [])
-    return data if isinstance(data, list) else []
+    return [str(item) for item in data if isinstance(item, str)] if isinstance(data, list) else []
+
+
+def save_memory(items):
+    clean = []
+    for item in items:
+        fact = " ".join(str(item).split())[:500]
+        if fact and fact.casefold() not in {saved.casefold() for saved in clean}:
+            clean.append(fact)
+    _write_json(MEMORY_FILE, clean[-100:])
+    return len(clean[-100:])
 
 
 def remember_fact(fact: str):
@@ -225,6 +235,15 @@ def capture_screen_data_url():
 
 def _project_root():
     configured = os.environ.get("JARVIS_PROJECT_DIR", "").strip()
+    if not configured:
+        env_path = ROOT / ".env"
+        try:
+            for line in env_path.read_text(encoding="utf-8-sig").splitlines():
+                if line.strip().startswith("JARVIS_PROJECT_DIR="):
+                    configured = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    break
+        except OSError:
+            pass
     root = Path(configured).expanduser() if configured else ROOT
     return root.resolve()
 
