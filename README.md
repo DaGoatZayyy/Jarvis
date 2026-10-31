@@ -7,7 +7,7 @@ A Windows system-tray voice assistant with push-to-talk, OpenRouter AI, Fish Aud
 - Runs in the Windows system tray without a persistent console window.
 - Hold-to-talk global keybind; releasing it submits the recording.
 - Speech transcription through Google Speech Recognition.
-- OpenRouter AI with tool calling when supported by the selected model/provider.
+- OpenRouter AI with tool calling when supported by the selected model/provider, with automatic plain-chat fallback when tools are rejected.
 - Persistent conversation history in `jarvis_history.json`.
 - Explicitly requested long-term facts/preferences in `jarvis_memory.json`.
 - Desktop tools for CPU, RAM, disk, battery, network totals and optional NVIDIA GPU telemetry.
@@ -150,7 +150,7 @@ Do not speak passwords, API keys, financial details or other sensitive informati
 - **Microphone unavailable:** Check Windows microphone permissions and the default input device.
 - **No speech detected:** Hold the keybind while speaking; check microphone input levels.
 - **Keybind not working:** Try another combination and check conflicts or Windows permissions.
-- **AI tool calls unavailable:** Some OpenRouter model/provider combinations may not support function calling. Use a tool-capable provider/model with the same configured model ID, or ordinary chat will continue without desktop actions only if the provider accepts the request.
+- **AI tool calls unavailable:** Some OpenRouter model/provider combinations may not support function calling. JARVIS retries as ordinary chat if the provider rejects tools; desktop actions will be unavailable on that request.
 - **GPU telemetry unavailable:** NVIDIA metrics require the NVIDIA driver utility `nvidia-smi` to be available.
 - **No audio:** Check Windows output device and volume. Use **Test Fish Audio voice** in the tray menu.
 - **Need diagnostic output:** Run `py jarvis.py` from PowerShell.
