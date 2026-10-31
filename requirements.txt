@@ -6,3 +6,4 @@ numpy>=2.1
 psutil>=6.1
 mss>=10.0
 Pillow>=11.0
+openwakeword>=0.6.0
