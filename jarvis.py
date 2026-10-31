@@ -1,7 +1,7 @@
 
 """J.A.R.V.I.S. Desktop - Windows system tray voice assistant.
 
-Hotkey -> microphone -> speech recognition -> OpenRouter -> Fish Audio TTS.
+Hotkey -> microphone -> speech recognition -> selected AI provider -> Fish Audio TTS.
 Uses sounddevice instead of PyAudio for microphone recording.
 """
 
@@ -36,7 +36,7 @@ from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
 from jarvis_intelligence import (TOOL_DEFINITIONS, execute_tool, load_history, save_history, recall_memory, capture_screen_data_url)
 from jarvis_ai import create_provider
-from jarvis_local import OllamaProvider, OllamaError
+from jarvis_local import OllamaProvider
 
 
 ROOT = Path(__file__).resolve().parent
