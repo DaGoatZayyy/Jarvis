@@ -713,7 +713,7 @@ class JarvisApp(QObject):
             self._delete_audio_temp()
             self.finish_processing()
 
-    @Slot()
+    @Slot(object, str)
     def on_player_error(self, error, error_string):
         self.show_error(f"Audio playback error: {error_string}")
         self._delete_audio_temp()
@@ -797,9 +797,6 @@ class JarvisApp(QObject):
                 try:
                     self.activity_text.setPlainText(
                         LOG_FILE.read_text(encoding="utf-8", errors="replace")
-                    )
-                    self.activity_text.moveCursor(
-                        self.activity_text.textCursor().MoveOperation.End
                     )
                 except OSError:
                     pass
