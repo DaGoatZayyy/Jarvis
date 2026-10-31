@@ -1,14 +1,16 @@
 # J.A.R.V.I.S. Desktop
 
-A Windows system-tray voice assistant with push-to-talk, OpenRouter AI, Fish Audio speech, local desktop intelligence, persistent conversation history and optional on-demand screen analysis.
+A Windows system-tray voice assistant with push-to-talk, switchable OpenRouter or local Ollama AI, Fish Audio speech, local desktop intelligence, persistent conversation history and optional on-demand screen analysis.
 
 ## Features
 
 - Runs in the Windows system tray without a persistent console window.
 - Hold-to-talk global keybind; releasing it submits the recording.
 - Optional always-on local "Hey Jarvis" wake-word listener; after activation, it records a command and stops automatically after a short silence. Wake-word detection runs locally on-device.
-- Speech transcription through Google Speech Recognition.
-- Task-based OpenRouter model routing across four compatible free models, with automatic failover for rate limits, unavailable providers, timeouts and empty responses.
+- Speech transcription through Google Speech Recognition (unchanged in both AI modes).
+- A task-based OpenRouter model pool with automatic failover when OpenRouter is selected.
+- A tray-menu **Enable Local AI** toggle to switch to Ollama, plus **Local AI Settings** to configure the server URL and choose from installed models. Provider selection is saved in `.env`.
+- Local Ollama chat uses the same system prompt, conversation history, memory and desktop tools where the selected model supports tool calling. Provider selection is fixed for each request: Local AI never silently falls back to OpenRouter.
 - General questions and everyday conversation default to Xing4.0; coding requests prefer Recursive Flint; screen/image tasks prefer NVIDIA Nemotron 3.5 Super VL; explicit quick extraction requests prefer Liquid LFM.
 - The model actually used and the fallback route are recorded in `jarvis.log`.
 - Persistent conversation history in `jarvis_history.json`.
@@ -26,7 +28,7 @@ A Windows system-tray voice assistant with push-to-talk, OpenRouter AI, Fish Aud
 - Windows 10 or Windows 11.
 - Python 3.10 or newer.
 - A microphone and working Windows audio output.
-- An OpenRouter API key and Fish Audio API key.
+- An OpenRouter API key when using OpenRouter, a running Ollama installation and downloaded model when using Local AI, and a Fish Audio API key for voice playback.
 - Internet access for speech recognition and AI services.
 
 ## Installation
@@ -46,8 +48,9 @@ A Windows system-tray voice assistant with push-to-talk, OpenRouter AI, Fish Aud
    Copy-Item .env.example .env
    ```
 
-5. Edit `.env` and enter your own `OPENROUTER_API_KEY` and `FISH_API_KEY`. The default `OPENROUTER_MODELS` list already contains the model pool; you can keep it as-is.
-6. Start JARVIS:
+5. Edit `.env` and enter your own `OPENROUTER_API_KEY` (if using OpenRouter) and `FISH_API_KEY`. The default `OPENROUTER_MODELS` list already contains the model pool; you can keep it as-is.
+6. For Local AI, install Ollama from https://ollama.com, start it, then pull a model such as `qwen2.5:7b` with `ollama pull qwen2.5:7b`. In the J.A.R.V.I.S. tray menu, open **Local AI Settings**, refresh installed models, select one, and enable **Local AI**.
+7. Start JARVIS:
 
    ```powershell
    .\run.bat
@@ -76,7 +79,7 @@ Default keybind: `ctrl+shift+space`.
 
 Maximum recording duration is 25 seconds. The global keybind can be changed in the tray menu's Settings dialog. The Python `keyboard` package may require appropriate Windows permissions.
 
-## Multi-model routing
+## AI provider selection\n\nRight-click the J.A.R.V.I.S. tray icon and use **Enable Local AI** to switch between OpenRouter and Ollama. The checkmark indicates the selected provider. Use **Local AI Settings** to edit the Ollama URL, refresh installed models and choose the model tag. These settings are saved in `.env` and persist across restarts.\n\nWhen Local AI is enabled, J.A.R.V.I.S. sends AI requests only to the configured Ollama server. If Ollama is unavailable or the model is missing, J.A.R.V.I.S. reports an error; it does not send that request to OpenRouter. Switching providers affects the next request, not a request already in progress. Speech recognition remains Google Speech Recognition and voice generation remains Fish Audio.\n\nOllama's `/api/tags` endpoint is used to discover installed models and `/api/chat` is used for local conversations. Tool calling and image understanding depend on the selected Ollama model.\n\n## Multi-model routing
 
 JARVIS classifies each request using lightweight keyword rules and puts a suitable model first, followed by the remaining configured models as fallbacks:
 
@@ -144,7 +147,7 @@ During voice playback, press the push-to-talk hotkey to stop the current reply a
 
 | Setting | Purpose |
 | --- | --- |
-| `OPENROUTER_API_KEY` | OpenRouter credential |
+| `JARVIS_PROVIDER` | Selected AI provider: `openrouter` or `ollama` (also switchable in the tray menu) |\n| `OLLAMA_BASE_URL` | Ollama server URL, default `http://localhost:11434` |\n| `OLLAMA_MODEL` | Local model tag, default `qwen2.5:7b` |\n| `OLLAMA_KEEP_ALIVE` | How long Ollama keeps the model loaded, default `5m` |\n| `OPENROUTER_API_KEY` | OpenRouter credential |
 | `OPENROUTER_MODELS` | Comma-separated model pool and fallback order |
 | `FISH_API_KEY` | Fish Audio credential |
 | `FISH_VOICE_ID` | Fish Audio voice/reference ID |
@@ -167,9 +170,9 @@ The log may contain recognized speech and AI responses. Review it before sharing
 ## Privacy and data handling
 
 - Microphone audio is sent to Google's speech recognition service for transcription.
-- Recognized text and conversation context are sent to OpenRouter.
-- AI response text is sent to Fish Audio for speech generation.
-- Explicitly requested screen captures are sent to OpenRouter.
+- With OpenRouter selected, recognized text and conversation context are sent to OpenRouter. With Local AI selected, chat text and context are sent to the configured Ollama server instead.
+- AI response text is sent to Fish Audio for speech generation in both AI modes.
+- Explicitly requested screen captures are sent to the currently selected AI provider (OpenRouter or the local Ollama server).
 - Search queries are sent to DuckDuckGo.
 - Conversation history and saved memory are stored locally in JSON files.
 
@@ -189,6 +192,8 @@ Do not speak passwords, API keys, financial details or other sensitive informati
 
 - `jarvis.py` — tray app, recording, AI requests and playback.
 - `jarvis_intelligence.py` — desktop tools, screen capture, web search, memory and history.
+- `jarvis_ai.py` — provider abstraction and explicit provider selection.
+- `jarvis_local.py` — Ollama connectivity, model discovery and local chat requests.
 - `requirements.txt` — Python dependencies.
 - `run.bat` — background launch.
 - `.env.example` — safe configuration template.
