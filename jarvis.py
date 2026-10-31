@@ -23,7 +23,7 @@ import numpy as np
 import sounddevice as sd
 import speech_recognition as sr
 
-from jarvis_wakeword import WakeWordListener
+from jarvis_wakeword import WakeWordListener, get_input_device
 
 from PySide6.QtCore import QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QAction, QIcon
@@ -489,19 +489,27 @@ def fish_tts(cfg: dict, text: str) -> bytes:
 
 
 def record_until_release(stop_event: threading.Event) -> np.ndarray:
-    """Record while the configured push-to-talk hotkey remains held."""
+    """Record all microphone audio while push-to-talk is held.
+
+    Do not use voice-activity detection to decide whether recording started:
+    the first spoken syllable can otherwise be mistaken for the noise baseline.
+    """
     blocks = queue.Queue()
+    start_time = time.monotonic()
+    captured = []
 
     def callback(indata, frames, timing, status):
+        if status:
+            log(f"Microphone input warning: {status}")
         blocks.put(indata.copy())
 
-    captured = []
-    started = False
-    start_time = time.monotonic()
-    ambient_levels = []
-
     try:
+        input_device = get_input_device()
+        device_info = sd.query_devices(input_device)
+        log(f"Microphone selected: {device_info.get('name', 'Unknown')} (device {input_device})")
+
         with sd.InputStream(
+            device=input_device,
             samplerate=SAMPLE_RATE,
             channels=1,
             dtype="int16",
@@ -510,41 +518,43 @@ def record_until_release(stop_event: threading.Event) -> np.ndarray:
         ):
             while True:
                 elapsed = time.monotonic() - start_time
-
                 if elapsed >= MAX_RECORD_SECONDS:
+                    log("Push-to-talk recording reached the 25-second limit.")
                     break
 
                 try:
                     block = blocks.get(timeout=0.1)
+                    captured.append(block)
                 except queue.Empty:
-                    if not started and elapsed >= START_TIMEOUT_SECONDS:
-                        raise AssistantError(
-                            "No speech detected. Check your microphone and try again."
-                        )
+                    # A key can be released before the audio stream has delivered
+                    # its first callback. Give PortAudio a brief chance to provide it.
+                    if stop_event.is_set() and elapsed >= 1.0 and not captured:
+                        break
                     continue
 
-                captured.append(block)
-                level = float(np.sqrt(np.mean(block.astype(np.float32) ** 2)))
-
-                if not started:
-                    if elapsed < 0.7:
-                        ambient_levels.append(level)
-                    ambient = float(np.median(ambient_levels)) if ambient_levels else 0.0
-                    threshold = max(280.0, ambient * 2.8)
-                    if level >= threshold:
-                        started = True
-
-                # Process at least one audio block after key-up so a fast
-                # release cannot race the worker before its stream opens.
                 if stop_event.is_set():
                     break
 
-        if not started or not captured:
+        if not captured:
             raise AssistantError(
-                "No speech detected. Hold the keybind while speaking, then release it."
+                "No microphone audio was captured. Check Windows microphone permissions "
+                "and select an active input device."
             )
 
-        return np.concatenate(captured, axis=0)
+        audio = np.concatenate(captured, axis=0)
+        samples = audio.astype(np.int32, copy=False)
+        peak = int(np.max(np.abs(samples))) if samples.size else 0
+        rms = float(np.sqrt(np.mean(samples.astype(np.float64) ** 2))) if samples.size else 0.0
+        duration = len(audio) / SAMPLE_RATE
+        log(f"Push-to-talk audio captured: {duration:.2f}s, peak={peak}, RMS={rms:.1f}")
+
+        if peak < 30:
+            raise AssistantError(
+                "The microphone captured almost-silent audio. Check that Windows is using "
+                "the correct microphone and that microphone access is enabled."
+            )
+
+        return audio
 
     except AssistantError:
         raise
@@ -569,7 +579,11 @@ def record_until_silence(stop_event: threading.Event) -> np.ndarray:
     threshold = 280.0
 
     try:
+        input_device = get_input_device()
+        device_info = sd.query_devices(input_device)
+        log(f"Wake-word microphone selected: {device_info.get('name', 'Unknown')} (device {input_device})")
         with sd.InputStream(
+            device=input_device,
             samplerate=SAMPLE_RATE,
             channels=1,
             dtype="int16",
@@ -949,7 +963,7 @@ class JarvisApp(QObject):
                 self.bridge.status.emit("Hey Jarvis detected - listening for your request")
                 raw_audio = record_until_silence(stop_event)
             else:
-                self.bridge.status.emit("Listening - hold the keybind and speak")
+                self.bridge.status.emit("Microphone recording active")
                 raw_audio = record_until_release(stop_event)
 
             audio = sr.AudioData(raw_audio.tobytes(), SAMPLE_RATE, 2)
