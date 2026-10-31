@@ -45,9 +45,11 @@ class WakeWordListener:
 
     def _run(self):
         try:
+            import openwakeword
             from openwakeword.model import Model
 
-            # The model is downloaded/cached by openWakeWord on first use.
+            # Download only the built-in Hey Jarvis model; it is cached locally.
+            openwakeword.utils.download_models(models=["hey_jarvis"])
             model = Model(
                 wakeword_models=["hey_jarvis"],
                 inference_framework="onnx",
