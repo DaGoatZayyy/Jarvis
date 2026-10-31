@@ -14,3 +14,7 @@ env/
 jarvis.log
 jarvis.log.1
 *.mp3
+
+# Local conversation and memory data
+jarvis_history.json
+jarvis_memory.json
