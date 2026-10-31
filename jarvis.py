@@ -32,6 +32,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
+from jarvis_intelligence import (TOOL_DEFINITIONS, execute_tool, load_history, save_history, recall_memory)
+
 
 ROOT = Path(__file__).resolve().parent
 ENV_FILE = ROOT / ".env"
@@ -49,6 +51,8 @@ DEFAULTS = {
     "JARVIS_CALLS_YOU": "sir",
     "JARVIS_HOTKEY": "ctrl+shift+space",
     "JARVIS_SPEECH_LANGUAGE": "en-US",
+    "JARVIS_VOICE_VOLUME": "0.85",
+    "JARVIS_VOICE_SPEED": "1.0",
 }
 
 SAMPLE_RATE = 16000
@@ -121,7 +125,7 @@ class AssistantError(Exception):
     pass
 
 
-_history = []
+_history = load_history()
 _history_lock = threading.Lock()
 
 
@@ -180,53 +184,63 @@ def openrouter_post(cfg: dict, payload: dict) -> dict:
         ) from err
 
     choices = data.get("choices") or [{}]
+    message = choices[0].get("message") or {}
     problem = data.get("error") or choices[0].get("error")
-
     if isinstance(problem, dict):
-        raise AssistantError(
-            str(problem.get("message") or problem)
-        )
-
-    content = (
-        choices[0].get("message") or {}
-    ).get("content")
-
-    if not isinstance(content, str) or not content.strip():
-        raise AssistantError(
-            "The AI model returned an empty response."
-        )
-
-    return {"reply": " ".join(content.split())}
+        raise AssistantError(str(problem.get("message") or problem))
+    return {"message": message}
 
 
 def think(cfg: dict, user_text: str) -> str:
     with _history_lock:
-        messages = list(_history) + [
-            {"role": "user", "content": user_text}
-        ]
+        history = list(_history)
+    messages = [{"role": "user", "content": user_text}]
+    memory_context = recall_memory()
+    system = system_prompt(cfg)
+    if memory_context != "No saved memories yet.":
+        system += "\n\nSaved user memory (use only when relevant):\n" + memory_context
+    request_messages = [{"role": "system", "content": system}, *history, *messages]
 
-    payload = {
-        "model": cfg.get(
-            "OPENROUTER_MODEL",
-            DEFAULTS["OPENROUTER_MODEL"]
-        ),
-        "messages": [
-            {"role": "system", "content": system_prompt(cfg)},
-            *messages
-        ],
-        "max_tokens": 1000,
-    }
-
-    reply = openrouter_post(cfg, payload)["reply"]
-
-    with _history_lock:
-        _history.extend([
-            {"role": "user", "content": user_text},
-            {"role": "assistant", "content": reply},
-        ])
-        del _history[:-16]
-
-    return reply
+    for _ in range(4):
+        payload = {
+            "model": cfg.get("OPENROUTER_MODEL", DEFAULTS["OPENROUTER_MODEL"]),
+            "messages": request_messages,
+            "tools": TOOL_DEFINITIONS,
+            "tool_choice": "auto",
+            "max_tokens": 1200,
+        }
+        result = openrouter_post(cfg, payload)
+        message = result.get("message") or {}
+        tool_calls = message.get("tool_calls") or []
+        if tool_calls:
+            request_messages.append(message)
+            for call in tool_calls:
+                function = call.get("function") or {}
+                name = function.get("name", "")
+                try:
+                    arguments = json.loads(function.get("arguments") or "{}")
+                    if not isinstance(arguments, dict):
+                        arguments = {}
+                except (json.JSONDecodeError, TypeError):
+                    arguments = {}
+                tool_result = execute_tool(name, arguments)
+                request_messages.append({
+                    "role": "tool",
+                    "tool_call_id": call.get("id", ""),
+                    "content": str(tool_result)[:5000],
+                })
+            continue
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise AssistantError("The AI model returned an empty response.")
+        reply = " ".join(content.split())
+        with _history_lock:
+            _history.extend([{"role": "user", "content": user_text},
+                             {"role": "assistant", "content": reply}])
+            del _history[:-80]
+            save_history(_history)
+        return reply
+    raise AssistantError("JARVIS reached its tool-call limit. Try a more specific request.")
 
 
 def fish_tts(cfg: dict, text: str) -> bytes:
@@ -382,6 +396,8 @@ class SettingsDialog(QDialog):
             ("JARVIS_HOTKEY", "Global keybind", False),
             ("JARVIS_CALLS_YOU", "How JARVIS addresses you", False),
             ("JARVIS_SPEECH_LANGUAGE", "Speech language", False),
+            ("JARVIS_VOICE_VOLUME", "Voice volume (0.0-1.0)", False),
+            ("JARVIS_VOICE_SPEED", "Voice speed (0.5-2.0)", False),
         ]
 
         for key, label, secret in fields:
@@ -466,6 +482,7 @@ class JarvisApp(QObject):
         self.audio_output = QAudioOutput()
         self.player = QMediaPlayer()
         self.player.setAudioOutput(self.audio_output)
+        self._apply_voice_settings()
 
         self.audio_temp_path = None
         self.player.mediaStatusChanged.connect(self.on_media_status)
@@ -580,8 +597,15 @@ class JarvisApp(QObject):
 
     @Slot()
     def start_listening(self):
+        # Pressing push-to-talk during playback interrupts the current reply.
         if self.busy:
-            return
+            if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+                self.player.stop()
+                self._delete_audio_temp()
+                self.busy = False
+                self.listening = False
+            else:
+                return
 
         self.busy = True
         self.listening = True
@@ -688,6 +712,15 @@ class JarvisApp(QObject):
 
         self._append_activity(f"ERROR: {message}")
 
+    def _apply_voice_settings(self):
+        try:
+            volume = max(0.0, min(1.0, float(self.settings.get("JARVIS_VOICE_VOLUME", "0.85"))))
+            speed = max(0.5, min(2.0, float(self.settings.get("JARVIS_VOICE_SPEED", "1.0"))))
+        except (TypeError, ValueError):
+            volume, speed = 0.85, 1.0
+        self.audio_output.setVolume(volume)
+        self.player.setPlaybackRate(speed)
+
     @Slot(bytes)
     def play_audio(self, audio_data: bytes):
         try:
@@ -700,6 +733,7 @@ class JarvisApp(QObject):
             self.audio_temp_path = handle.name
 
             self.player.setSource(QUrl.fromLocalFile(self.audio_temp_path))
+            self._apply_voice_settings()
             self.player.play()
             self.set_status("Speaking")
 
@@ -746,6 +780,7 @@ class JarvisApp(QObject):
             save_settings(updates)
 
             self.settings = load_settings()
+            self._apply_voice_settings()
             self.register_hotkey()
 
             self.tray.showMessage(
