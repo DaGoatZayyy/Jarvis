@@ -877,7 +877,7 @@ class JarvisApp(QObject):
 
         self.app = app
         self.settings = load_settings()
-        load_plugins(logger=log, force=True)
+        load_plugins(logger=log)
 
         self.bridge = Bridge()
 
