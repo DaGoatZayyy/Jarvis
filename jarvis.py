@@ -598,7 +598,7 @@ def record_until_release(stop_event: threading.Event) -> np.ndarray:
         ) from err
 
 
-def record_until_silence(stop_event: threading.Event) -> np.ndarray:
+def record_until_silence(stop_event: threading.Event, mode="wake") -> np.ndarray:
     """Record a wake-word command until speech has been quiet for a short period."""
     blocks = queue.Queue()
 
@@ -638,7 +638,8 @@ def record_until_silence(stop_event: threading.Event) -> np.ndarray:
                 except queue.Empty:
                     if not started and elapsed >= START_TIMEOUT_SECONDS:
                         raise AssistantError(
-                            "Wake word detected, but no command was heard. Say 'Hey Jarvis' and then your request."
+                            "No speech was heard in hands-free conversation mode."
+                            if mode == "conversation" else "Wake word detected, but no command was heard."
                         )
                     continue
 
@@ -1138,7 +1139,7 @@ class JarvisApp(QObject):
         try:
             if source in ("wake", "conversation"):
                 self.bridge.status.emit("Hey Jarvis detected - listening for your request" if source == "wake" else "Hands-free mode - listening for your next request")
-                raw_audio = record_until_silence(stop_event)
+                raw_audio = record_until_silence(stop_event, mode=source)
             else:
                 self.bridge.status.emit("Microphone recording active")
                 raw_audio = record_until_release(stop_event)
