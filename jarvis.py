@@ -61,6 +61,14 @@ START_TIMEOUT_SECONDS = 8
 def log(message: str):
     line = f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {message}"
     try:
+        # Keep the current log bounded; retain one previous log as a backup.
+        if LOG_FILE.exists() and LOG_FILE.stat().st_size >= 1_000_000:
+            backup = ROOT / "jarvis.log.1"
+            try:
+                backup.unlink(missing_ok=True)
+                LOG_FILE.replace(backup)
+            except OSError:
+                pass
         with LOG_FILE.open("a", encoding="utf-8") as f:
             f.write(line + "\n")
     except OSError:
@@ -276,9 +284,8 @@ def fish_tts(cfg: dict, text: str) -> bytes:
     return audio
 
 
-def record_until_silence() -> np.ndarray:
-    """Record microphone audio without requiring PyAudio."""
-
+def record_until_release(stop_event: threading.Event) -> np.ndarray:
+    """Record while the configured push-to-talk hotkey remains held."""
     blocks = queue.Queue()
 
     def callback(indata, frames, timing, status):
@@ -287,7 +294,6 @@ def record_until_silence() -> np.ndarray:
     captured = []
     started = False
     start_time = time.monotonic()
-    last_voice_time = start_time
     ambient_levels = []
 
     try:
@@ -298,82 +304,45 @@ def record_until_silence() -> np.ndarray:
             blocksize=int(SAMPLE_RATE * BLOCK_SECONDS),
             callback=callback,
         ):
-            while True:
+            while not stop_event.is_set():
                 elapsed = time.monotonic() - start_time
 
-                if elapsed > MAX_RECORD_SECONDS + START_TIMEOUT_SECONDS:
+                if elapsed >= MAX_RECORD_SECONDS:
                     break
 
                 try:
-                    block = blocks.get(timeout=1.0)
+                    block = blocks.get(timeout=0.1)
                 except queue.Empty:
-                    if (
-                        not started
-                        and elapsed > START_TIMEOUT_SECONDS
-                    ):
+                    if not started and elapsed >= START_TIMEOUT_SECONDS:
                         raise AssistantError(
-                            "No speech detected. Check your microphone."
+                            "No speech detected. Check your microphone and try again."
                         )
                     continue
 
                 captured.append(block)
-
-                level = float(
-                    np.sqrt(
-                        np.mean(block.astype(np.float32) ** 2)
-                    )
-                )
+                level = float(np.sqrt(np.mean(block.astype(np.float32) ** 2)))
 
                 if not started:
                     if elapsed < 0.7:
                         ambient_levels.append(level)
-
-                    ambient = (
-                        float(np.median(ambient_levels))
-                        if ambient_levels else 0.0
-                    )
-
+                    ambient = float(np.median(ambient_levels)) if ambient_levels else 0.0
                     threshold = max(280.0, ambient * 2.8)
-
                     if level >= threshold:
                         started = True
-                        last_voice_time = time.monotonic()
 
-                else:
-                    ambient = (
-                        float(np.median(ambient_levels))
-                        if ambient_levels else 0.0
-                    )
+        if not started or not captured:
+            raise AssistantError(
+                "No speech detected. Hold the keybind while speaking, then release it."
+            )
 
-                    threshold = max(280.0, ambient * 2.8)
-
-                    if level >= threshold:
-                        last_voice_time = time.monotonic()
-
-                    elif (
-                        time.monotonic() - last_voice_time
-                        >= SILENCE_SECONDS
-                    ):
-                        break
-
-                if started and elapsed >= MAX_RECORD_SECONDS:
-                    break
+        return np.concatenate(captured, axis=0)
 
     except AssistantError:
         raise
-
     except Exception as err:
         raise AssistantError(
-            f"Microphone error: {err}. "
-            "Check Windows microphone permissions and input device."
+            f"Microphone error: {err}. Check Windows microphone permissions and input device."
         ) from err
-
-    if not started or not captured:
-        raise AssistantError(
-            "No speech detected. Press the keybind and speak clearly."
-        )
-
-    return np.concatenate(captured, axis=0)
 
 
 class Bridge(QObject):
@@ -383,6 +352,8 @@ class Bridge(QObject):
     error = Signal(str)
     audio_ready = Signal(bytes)
     hotkey_pressed = Signal()
+    hotkey_released = Signal()
+    processing_finished = Signal()
 
 
 class SettingsDialog(QDialog):
@@ -394,6 +365,10 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(500)
 
         self.fields = {}
+        self.existing_secrets = {
+            "OPENROUTER_API_KEY": settings.get("OPENROUTER_API_KEY", ""),
+            "FISH_API_KEY": settings.get("FISH_API_KEY", ""),
+        }
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -410,11 +385,11 @@ class SettingsDialog(QDialog):
         ]
 
         for key, label, secret in fields:
-            edit = QLineEdit(settings.get(key, ""))
+            edit = QLineEdit("" if secret else settings.get(key, ""))
 
             if secret:
                 edit.setEchoMode(QLineEdit.EchoMode.Password)
-                edit.setPlaceholderText("Paste API key here")
+                edit.setPlaceholderText("Leave blank to keep the saved key")
 
             if key == "JARVIS_HOTKEY":
                 edit.setPlaceholderText(
@@ -431,7 +406,7 @@ class SettingsDialog(QDialog):
 
         note = QLabel(
             "Settings are saved in a .env file beside jarvis.py. "
-            "API keys are hidden in this window."
+            "API keys are hidden. Leave a key field blank to keep its current value."
         )
         note.setWordWrap(True)
         layout.addWidget(note)
@@ -451,10 +426,14 @@ class SettingsDialog(QDialog):
         layout.addLayout(buttons)
 
     def values(self) -> dict:
-        return {
+        values = {
             key: field.text().strip()
             for key, field in self.fields.items()
         }
+        for key, old_value in self.existing_secrets.items():
+            if not values.get(key):
+                values[key] = old_value
+        return values
 
 
 class JarvisApp(QObject):
@@ -472,14 +451,15 @@ class JarvisApp(QObject):
         self.bridge.response.connect(self.show_response)
         self.bridge.error.connect(self.show_error)
         self.bridge.audio_ready.connect(self.play_audio)
-
-        # The keyboard hook emits this signal. It does not directly
-        # manipulate Qt widgets from the keyboard thread.
         self.bridge.hotkey_pressed.connect(self.start_listening)
+        self.bridge.hotkey_released.connect(self.stop_listening)
+        self.bridge.processing_finished.connect(self.finish_processing)
 
+        # busy remains true through TTS playback, preventing overlapping sessions.
+        self.busy = False
         self.listening = False
-        self.state_lock = threading.Lock()
-        self.hotkey_handle = None
+        self.stop_event = None
+        self.hotkey_handles = []
 
         self.activity_window = None
 
@@ -488,9 +468,8 @@ class JarvisApp(QObject):
         self.player.setAudioOutput(self.audio_output)
 
         self.audio_temp_path = None
-        self.player.mediaStatusChanged.connect(
-            self.on_media_status
-        )
+        self.player.mediaStatusChanged.connect(self.on_media_status)
+        self.player.errorOccurred.connect(self.on_player_error)
 
         self.tray = QSystemTrayIcon(self._make_icon(), app)
         self.tray.setToolTip("J.A.R.V.I.S. - Starting")
@@ -559,13 +538,12 @@ class JarvisApp(QObject):
             self.start_listening()
 
     def register_hotkey(self):
-        if self.hotkey_handle is not None:
+        for handle in self.hotkey_handles:
             try:
-                keyboard.remove_hotkey(self.hotkey_handle)
+                keyboard.remove_hotkey(handle)
             except Exception:
                 pass
-
-            self.hotkey_handle = None
+        self.hotkey_handles.clear()
 
         hotkey = self.settings.get(
             "JARVIS_HOTKEY",
@@ -573,100 +551,98 @@ class JarvisApp(QObject):
         ).strip()
 
         try:
-            self.hotkey_handle = keyboard.add_hotkey(
+            # One callback starts capture on key-down; the other ends it
+            # when the complete combination is released.
+            press_handle = keyboard.add_hotkey(
                 hotkey,
                 lambda: self.bridge.hotkey_pressed.emit(),
                 suppress=False,
                 trigger_on_release=False,
             )
-
-            self.set_status(f"Ready - hotkey {hotkey}")
+            release_handle = keyboard.add_hotkey(
+                hotkey,
+                lambda: self.bridge.hotkey_released.emit(),
+                suppress=False,
+                trigger_on_release=True,
+            )
+            self.hotkey_handles.extend([press_handle, release_handle])
+            self.set_status(f"Ready - hold {hotkey} to talk")
 
         except Exception as err:
             self.bridge.error.emit(
-                f"Could not register keybind '{hotkey}': {err}. "
-                "Try ctrl+shift+space."
+                f"Could not register keybind '{hotkey}': {err}. Try ctrl+shift+space."
             )
 
     @Slot()
     def start_listening(self):
-        with self.state_lock:
-            if self.listening:
-                return
+        if self.busy:
+            return
 
-            self.listening = True
-
-        self.listen_action.setText("Listening...")
-        self.bridge.status.emit("Listening - speak now")
+        self.busy = True
+        self.listening = True
+        self.stop_event = threading.Event()
+        self.listen_action.setText("Listening - release key to send")
+        self.bridge.status.emit("Listening - hold the keybind and speak")
 
         threading.Thread(
             target=self._listen_worker,
+            args=(self.stop_event,),
             daemon=True
         ).start()
 
-    def _listen_worker(self):
+    @Slot()
+    def stop_listening(self):
+        if self.listening and self.stop_event is not None:
+            self.stop_event.set()
+            self.bridge.status.emit("Processing your speech...")
+
+    @Slot()
+    def finish_processing(self):
+        self.busy = False
+        self.listening = False
+        self.stop_event = None
+        self.listen_action.setText("Start listening")
+        self.bridge.status.emit("Ready")
+
+    def _listen_worker(self, stop_event: threading.Event):
+        audio_queued = False
         try:
-            self.bridge.status.emit("Listening - speak now")
+            self.bridge.status.emit("Listening - hold the keybind and speak")
+            raw_audio = record_until_release(stop_event)
 
-            raw_audio = record_until_silence()
-
-            audio = sr.AudioData(
-                raw_audio.tobytes(),
-                SAMPLE_RATE,
-                2
-            )
-
+            audio = sr.AudioData(raw_audio.tobytes(), SAMPLE_RATE, 2)
             self.bridge.status.emit("Transcribing speech...")
-
             recognizer = sr.Recognizer()
 
             try:
                 spoken_text = recognizer.recognize_google(
                     audio,
-                    language=load_settings().get(
-                        "JARVIS_SPEECH_LANGUAGE",
-                        "en-US"
-                    )
+                    language=load_settings().get("JARVIS_SPEECH_LANGUAGE", "en-US")
                 )
-
             except sr.UnknownValueError as err:
-                raise AssistantError(
-                    "I couldn't understand that. Please try again."
-                ) from err
-
+                raise AssistantError("I couldn't understand that. Please try again.") from err
             except sr.RequestError as err:
-                raise AssistantError(
-                    f"Speech recognition service error: {err}"
-                ) from err
+                raise AssistantError(f"Speech recognition service error: {err}") from err
 
             if not spoken_text.strip():
                 raise AssistantError("No speech was detected.")
 
             self.bridge.transcript.emit(spoken_text)
-
             self.bridge.status.emit("Thinking...")
-
             reply = think(load_settings(), spoken_text)
-
             self.bridge.response.emit(reply)
 
-            self.bridge.status.emit(
-                "Generating Fish Audio voice..."
-            )
-
+            self.bridge.status.emit("Generating Fish Audio voice...")
             audio_data = fish_tts(load_settings(), reply)
-
+            audio_queued = True
             self.bridge.audio_ready.emit(audio_data)
 
         except Exception as err:
             self.bridge.error.emit(str(err))
-
         finally:
-            with self.state_lock:
-                self.listening = False
-
-            self.bridge.status.emit("__reset_listen_action__")
-            self.bridge.status.emit("Ready")
+            # Successful audio is still busy until playback ends.
+            if not audio_queued:
+                self.bridge.processing_finished.emit()
 
     @Slot(str)
     def show_transcript(self, text: str):
@@ -710,35 +686,38 @@ class JarvisApp(QObject):
     @Slot(bytes)
     def play_audio(self, audio_data: bytes):
         try:
+            self.player.stop()
             self._delete_audio_temp()
 
-            handle = tempfile.NamedTemporaryFile(
-                delete=False,
-                suffix=".mp3"
-            )
-
+            handle = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
             handle.write(audio_data)
             handle.close()
-
             self.audio_temp_path = handle.name
 
-            self.player.setSource(
-                QUrl.fromLocalFile(self.audio_temp_path)
-            )
-
+            self.player.setSource(QUrl.fromLocalFile(self.audio_temp_path))
             self.player.play()
             self.set_status("Speaking")
 
         except Exception as err:
-            self.show_error(
-                f"Could not play Fish Audio output: {err}"
-            )
+            self.show_error(f"Could not play Fish Audio output: {err}")
+            self._delete_audio_temp()
+            self.finish_processing()
 
     @Slot()
     def on_media_status(self, status):
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
-            self.set_status("Ready")
             self._delete_audio_temp()
+            self.finish_processing()
+        elif status == QMediaPlayer.MediaStatus.InvalidMedia:
+            self.show_error("The generated audio could not be played.")
+            self._delete_audio_temp()
+            self.finish_processing()
+
+    @Slot()
+    def on_player_error(self, error, error_string):
+        self.show_error(f"Audio playback error: {error_string}")
+        self._delete_audio_temp()
+        self.finish_processing()
 
     def _delete_audio_temp(self):
         if (
@@ -773,24 +752,33 @@ class JarvisApp(QObject):
 
     @Slot()
     def test_voice(self):
-        threading.Thread(
-            target=self._test_voice_worker,
-            daemon=True
-        ).start()
+        if self.busy:
+            self.tray.showMessage(
+                "J.A.R.V.I.S.",
+                "Wait until the current listen or voice playback finishes.",
+                QSystemTrayIcon.MessageIcon.Information,
+                3000
+            )
+            return
+
+        self.busy = True
+        threading.Thread(target=self._test_voice_worker, daemon=True).start()
 
     def _test_voice_worker(self):
+        audio_queued = False
         try:
             self.bridge.status.emit("Testing Fish Audio...")
-
             data = fish_tts(
                 load_settings(),
                 "Hello. J.A.R.V.I.S. voice test complete."
             )
-
+            audio_queued = True
             self.bridge.audio_ready.emit(data)
-
         except Exception as err:
             self.bridge.error.emit(str(err))
+        finally:
+            if not audio_queued:
+                self.bridge.processing_finished.emit()
 
     @Slot()
     def show_activity(self):
@@ -805,13 +793,21 @@ class JarvisApp(QObject):
 
             self.activity_text = QTextEdit()
             self.activity_text.setReadOnly(True)
+            if LOG_FILE.exists():
+                try:
+                    self.activity_text.setPlainText(
+                        LOG_FILE.read_text(encoding="utf-8", errors="replace")
+                    )
+                    self.activity_text.moveCursor(
+                        self.activity_text.textCursor().MoveOperation.End
+                    )
+                except OSError:
+                    pass
 
             layout.addWidget(self.activity_text)
 
             clear_button = QPushButton("Clear activity")
-            clear_button.clicked.connect(
-                self.activity_text.clear
-            )
+            clear_button.clicked.connect(self.clear_activity)
 
             layout.addWidget(clear_button)
 
@@ -824,12 +820,24 @@ class JarvisApp(QObject):
             self.activity_text.append(text)
 
     @Slot()
-    def exit_app(self):
+    def clear_activity(self):
+        if self.activity_window is not None:
+            self.activity_text.clear()
         try:
-            if self.hotkey_handle is not None:
-                keyboard.remove_hotkey(self.hotkey_handle)
-        except Exception:
-            pass
+            LOG_FILE.write_text("", encoding="utf-8")
+        except OSError as err:
+            self.show_error(f"Could not clear the activity log: {err}")
+
+    @Slot()
+    def exit_app(self):
+        if self.stop_event is not None:
+            self.stop_event.set()
+        for handle in self.hotkey_handles:
+            try:
+                keyboard.remove_hotkey(handle)
+            except Exception:
+                pass
+        self.hotkey_handles.clear()
 
         self.player.stop()
         self._delete_audio_temp()
@@ -850,7 +858,7 @@ def main():
         )
         return
 
-    JarvisApp(app)
+    jarvis = JarvisApp(app)  # Keep the QObject alive for the entire event loop.
     sys.exit(app.exec())
 
 
