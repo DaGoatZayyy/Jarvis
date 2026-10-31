@@ -73,13 +73,21 @@ Default keybind: `ctrl+shift+space`.
 
 - The wake-word listener starts automatically when JARVIS starts (unless disabled in Settings).
 - Say **"Hey Jarvis"**, pause briefly, then speak your request. JARVIS records until it detects about 1.25 seconds of silence, or reaches the 25-second limit.
-- Wake-word detection uses openWakeWord locally on your PC. The wake-word audio is not sent to a cloud service. After activation, the captured command still follows the existing Google Speech Recognition, OpenRouter and Fish Audio flow.
+- Wake-word detection uses openWakeWord locally on your PC. The wake-word audio is not sent to a cloud service. After activation, the captured command still follows Google Speech Recognition, the currently selected AI provider and Fish Audio.
 - The microphone remains active for local wake-word detection while JARVIS is idle. Stop JARVIS or set `JARVIS_WAKE_WORD_ENABLED=0` in `.env` to disable it.
 - If the wake-word model or microphone cannot initialize, the tray log reports the error; push-to-talk remains available.
 
 Maximum recording duration is 25 seconds. The global keybind can be changed in the tray menu's Settings dialog. The Python `keyboard` package may require appropriate Windows permissions.
 
-## AI provider selection\n\nRight-click the J.A.R.V.I.S. tray icon and use **Enable Local AI** to switch between OpenRouter and Ollama. The checkmark indicates the selected provider. Use **Local AI Settings** to edit the Ollama URL, refresh installed models and choose the model tag. These settings are saved in `.env` and persist across restarts.\n\nWhen Local AI is enabled, J.A.R.V.I.S. sends AI requests only to the configured Ollama server. If Ollama is unavailable or the model is missing, J.A.R.V.I.S. reports an error; it does not send that request to OpenRouter. Switching providers affects the next request, not a request already in progress. Speech recognition remains Google Speech Recognition and voice generation remains Fish Audio.\n\nOllama's `/api/tags` endpoint is used to discover installed models and `/api/chat` is used for local conversations. Tool calling and image understanding depend on the selected Ollama model.\n\n## Multi-model routing
+## AI provider selection
+
+Right-click the J.A.R.V.I.S. tray icon and use **Enable Local AI** to switch between OpenRouter and Ollama. The checkmark indicates the selected provider. Use **Local AI Settings** to edit the Ollama URL, refresh installed models and choose the model tag. These settings are saved in `.env` and persist across restarts.
+
+When Local AI is enabled, J.A.R.V.I.S. sends AI requests only to the configured Ollama server. If Ollama is unavailable or the model is missing, J.A.R.V.I.S. reports an error; it does not send that request to OpenRouter. Switching providers affects the next request, not a request already in progress. Speech recognition remains Google Speech Recognition and voice generation remains Fish Audio.
+
+Ollama's `/api/tags` endpoint is used to discover installed models and `/api/chat` is used for local conversations. Tool calling and image understanding depend on the selected Ollama model.
+
+## Multi-model routing
 
 JARVIS classifies each request using lightweight keyword rules and puts a suitable model first, followed by the remaining configured models as fallbacks:
 
@@ -113,7 +121,7 @@ App launching is restricted to a built-in allowlist. JARVIS does not execute arb
 
 ### Screen privacy
 
-Screen analysis is on-demand, not continuous. The screenshot is captured only after you explicitly ask about visible screen content, and it is sent to your configured OpenRouter model for analysis. Do not ask JARVIS to capture screens containing passwords, private messages, financial details or other sensitive information.
+Screen analysis is on-demand, not continuous. The screenshot is captured only after you explicitly ask about visible screen content, and it is sent to the currently selected AI provider for analysis. Do not ask JARVIS to capture screens containing passwords, private messages, financial details or other sensitive information.
 
 ### Web search
 
@@ -147,7 +155,11 @@ During voice playback, press the push-to-talk hotkey to stop the current reply a
 
 | Setting | Purpose |
 | --- | --- |
-| `JARVIS_PROVIDER` | Selected AI provider: `openrouter` or `ollama` (also switchable in the tray menu) |\n| `OLLAMA_BASE_URL` | Ollama server URL, default `http://localhost:11434` |\n| `OLLAMA_MODEL` | Local model tag, default `qwen2.5:7b` |\n| `OLLAMA_KEEP_ALIVE` | How long Ollama keeps the model loaded, default `5m` |\n| `OPENROUTER_API_KEY` | OpenRouter credential |
+| `JARVIS_PROVIDER` | Selected AI provider: `openrouter` or `ollama` (also switchable in the tray menu) |
+| `OLLAMA_BASE_URL` | Ollama server URL, default `http://localhost:11434` |
+| `OLLAMA_MODEL` | Local model tag, default `qwen2.5:7b` |
+| `OLLAMA_KEEP_ALIVE` | How long Ollama keeps the model loaded, default `5m` |
+| `OPENROUTER_API_KEY` | OpenRouter credential |
 | `OPENROUTER_MODELS` | Comma-separated model pool and fallback order |
 | `FISH_API_KEY` | Fish Audio credential |
 | `FISH_VOICE_ID` | Fish Audio voice/reference ID |
@@ -183,7 +195,8 @@ Do not speak passwords, API keys, financial details or other sensitive informati
 - **Microphone unavailable:** Check Windows microphone permissions and the default input device.
 - **No speech detected:** Hold the keybind while speaking; check microphone input levels.
 - **Keybind not working:** Try another combination and check conflicts or Windows permissions.
-- **AI tool calls unavailable:** Some OpenRouter model/provider combinations may not support function calling. JARVIS retries as ordinary chat if the provider rejects tools; desktop actions will be unavailable on that request.
+- **AI tool calls unavailable:** Some selected models do not support function calling. JARVIS retries as ordinary chat if the provider rejects tools; desktop actions will be unavailable on that request.
+- **Ollama unavailable:** Start the Ollama app/service, confirm the URL in Local AI Settings, refresh installed models and make sure the selected model has been pulled.
 - **GPU telemetry unavailable:** NVIDIA metrics require the NVIDIA driver utility `nvidia-smi` to be available.
 - **No audio:** Check Windows output device and volume. Use **Test Fish Audio voice** in the tray menu.
 - **Need diagnostic output:** Run `py jarvis.py` from PowerShell.
