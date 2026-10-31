@@ -28,13 +28,13 @@ from jarvis_wakeword import WakeWordListener, get_input_device
 from PySide6.QtCore import QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel,
+    QApplication, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
     QLineEdit, QMenu, QMessageBox, QPushButton, QStyle,
     QSystemTrayIcon, QTextEdit, QVBoxLayout, QWidget
 )
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
-from jarvis_intelligence import (TOOL_DEFINITIONS, execute_tool, load_history, save_history, recall_memory, capture_screen_data_url)
+from jarvis_intelligence import (TOOL_DEFINITIONS, execute_tool, load_history, save_history, recall_memory, capture_screen_data_url, load_memory, save_memory)
 from jarvis_ai import create_provider
 from jarvis_local import OllamaProvider
 
@@ -823,6 +823,42 @@ class LocalAISettingsDialog(QDialog):
             "OLLAMA_KEEP_ALIVE": self.keep_alive.text().strip() or "5m",
         }
 
+
+class MemoryDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("J.A.R.V.I.S. Memory")
+        self.resize(560, 440)
+        layout = QVBoxLayout(self)
+        note = QLabel("One saved memory per line. Edit or remove entries, then save. Memory stays in jarvis_memory.json on this PC.")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        self.editor = QTextEdit()
+        self.editor.setPlainText("\n".join(load_memory()))
+        layout.addWidget(self.editor)
+        buttons = QHBoxLayout()
+        clear = QPushButton("Clear all")
+        cancel = QPushButton("Cancel")
+        save = QPushButton("Save memory")
+        clear.clicked.connect(self.clear_all)
+        cancel.clicked.connect(self.reject)
+        save.clicked.connect(self.save)
+        buttons.addWidget(clear)
+        buttons.addStretch()
+        buttons.addWidget(cancel)
+        buttons.addWidget(save)
+        layout.addLayout(buttons)
+
+    def clear_all(self):
+        answer = QMessageBox.question(self, 'Clear J.A.R.V.I.S. memory', 'Delete every saved memory entry from this PC?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            self.editor.clear()
+            save_memory([])
+
+    def save(self):
+        count = save_memory(self.editor.toPlainText().splitlines())
+        QMessageBox.information(self, "Memory saved", f"Saved {count} memory item(s).")
+        self.accept()
 
 class JarvisApp(QObject):
 
