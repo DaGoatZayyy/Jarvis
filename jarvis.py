@@ -48,6 +48,7 @@ DEFAULTS = {
     "FISH_VOICE_ID": "41f0953d7a6b4c078445c7e65d620eeb",
     "FISH_MODEL": "s2.1-pro-free",
     "OPENROUTER_MODEL": "apodex/apodex-1.1-mini:free",
+    "OPENROUTER_MODELS": "recursive/flint-v1.0:free,xingchen-agi/xing4.0-29b-a4b:free,nvidia/nemotron-3.5-super-vl:free,liquid/lfm-2.5-2.6b:free,thinkingmachines/inkling-small:free",
     "JARVIS_CALLS_YOU": "sir",
     "JARVIS_HOTKEY": "ctrl+shift+space",
     "JARVIS_SPEECH_LANGUAGE": "en-US",
@@ -144,52 +145,182 @@ def system_prompt(cfg: dict) -> str:
     )
 
 
-def openrouter_post(cfg: dict, payload: dict) -> dict:
-    key = cfg.get("OPENROUTER_API_KEY", "").strip()
+MODEL_CATALOG = {
+    "recursive/flint-v1.0:free": "coding and software engineering",
+    "xingchen-agi/xing4.0-29b-a4b:free": "reasoning, planning and desktop tool use",
+    "nvidia/nemotron-3.5-super-vl:free": "screen, image and document understanding",
+    "liquid/lfm-2.5-2.6b:free": "quick, lightweight questions and extraction",
+    "thinkingmachines/inkling-small:free": "general assistant, reasoning and multimodal tasks",
+    "thinkingmachines/inkling:free": "general agentic tasks (not enabled by default)",
+}
 
-    if not key:
-        raise AssistantError(
-            "OpenRouter API key is missing. Open Settings to add it."
-        )
+MODEL_COOLDOWNS = {}
+MODEL_COOLDOWN_LOCK = threading.Lock()
 
-    request = urllib.request.Request(
-        OPENROUTER_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "http://localhost",
-            "X-Title": "JARVIS Desktop",
-        },
+
+def configured_models(cfg: dict) -> list[str]:
+    raw = cfg.get("OPENROUTER_MODELS", DEFAULTS["OPENROUTER_MODELS"])
+    models = [item.strip() for item in str(raw).split(",") if item.strip()]
+    # Preserve user order while removing duplicates and unknown model IDs.
+    valid = []
+    for model in models:
+        if model in MODEL_CATALOG and model not in valid and model != "thinkingmachines/inkling:free":
+            valid.append(model)
+    if not valid:
+        valid = [
+            "recursive/flint-v1.0:free",
+            "xingchen-agi/xing4.0-29b-a4b:free",
+            "nvidia/nemotron-3.5-super-vl:free",
+            "liquid/lfm-2.5-2.6b:free",
+            "thinkingmachines/inkling-small:free",
+        ]
+    return valid
+
+
+def route_models(cfg: dict, user_text: str) -> list[str]:
+    """Pick a task-appropriate first model, then retain all others as fallbacks."""
+    text = user_text.casefold()
+    models = configured_models(cfg)
+
+    vision_terms = (
+        "screen", "screenshot", "monitor", "on my display", "what's on",
+        "what is on", "image", "picture", "photo", "diagram", "document",
+        "read this image", "look at this",
+    )
+    coding_terms = (
+        "code", "coding", "program", "script", "python", "javascript",
+        "typescript", "html", "css", "debug", "bug", "stack trace",
+        "traceback", "github", "repository", "repo", "function", "api",
+        "compile", "build error", "refactor", "sql", "powershell",
+    )
+    reasoning_terms = (
+        "reason", "reasoning", "think through", "analyze", "analyse",
+        "compare", "evaluate", "plan", "strategy", "complex", "math",
+        "prove", "why does", "tradeoff", "trade-off",
+    )
+    desktop_terms = (
+        "cpu", "ram", "memory usage", "gpu", "disk space", "battery",
+        "running processes", "running apps", "open ", "launch ",
+        "computer", "desktop", "task manager",
     )
 
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            data = json.loads(response.read())
+    if any(term in text for term in vision_terms):
+        preferred = [
+            "nvidia/nemotron-3.5-super-vl:free",
+            "thinkingmachines/inkling-small:free",
+            "xingchen-agi/xing4.0-29b-a4b:free",
+        ]
+    elif any(term in text for term in coding_terms):
+        preferred = [
+            "recursive/flint-v1.0:free",
+            "xingchen-agi/xing4.0-29b-a4b:free",
+            "thinkingmachines/inkling-small:free",
+            "nvidia/nemotron-3.5-super-vl:free",
+        ]
+    elif any(term in text for term in reasoning_terms):
+        preferred = [
+            "xingchen-agi/xing4.0-29b-a4b:free",
+            "nvidia/nemotron-3.5-super-vl:free",
+            "thinkingmachines/inkling-small:free",
+            "recursive/flint-v1.0:free",
+        ]
+    elif any(term in text for term in desktop_terms):
+        preferred = [
+            "xingchen-agi/xing4.0-29b-a4b:free",
+            "thinkingmachines/inkling-small:free",
+            "nvidia/nemotron-3.5-super-vl:free",
+            "recursive/flint-v1.0:free",
+        ]
+    elif len(text.split()) <= 12:
+        preferred = [
+            "liquid/lfm-2.5-2.6b:free",
+            "thinkingmachines/inkling-small:free",
+            "xingchen-agi/xing4.0-29b-a4b:free",
+        ]
+    else:
+        preferred = [
+            "thinkingmachines/inkling-small:free",
+            "xingchen-agi/xing4.0-29b-a4b:free",
+            "liquid/lfm-2.5-2.6b:free",
+            "recursive/flint-v1.0:free",
+        ]
 
-    except urllib.error.HTTPError as err:
-        detail = err.read()[:500].decode("utf-8", "replace")
-        raise AssistantError(
-            f"OpenRouter error {err.code}: {detail}"
-        ) from err
+    ordered = [model for model in preferred if model in models]
+    ordered.extend(model for model in models if model not in ordered)
 
-    except (urllib.error.URLError, TimeoutError) as err:
-        raise AssistantError(
-            f"Could not reach OpenRouter: {err}"
-        ) from err
+    with MODEL_COOLDOWN_LOCK:
+        ready = [model for model in ordered if MODEL_COOLDOWNS.get(model, 0) <= time.monotonic()]
+    # If every model is cooling down, try the preferred order rather than stopping.
+    return ready or ordered
 
-    except json.JSONDecodeError as err:
-        raise AssistantError(
-            "OpenRouter returned invalid JSON."
-        ) from err
 
-    choices = data.get("choices") or [{}]
-    message = choices[0].get("message") or {}
-    problem = data.get("error") or choices[0].get("error")
-    if isinstance(problem, dict):
-        raise AssistantError(str(problem.get("message") or problem))
-    return {"message": message}
+def openrouter_post(cfg: dict, payload: dict, candidates: list[str] | None = None) -> dict:
+    key = cfg.get("OPENROUTER_API_KEY", "").strip()
+    if not key:
+        raise AssistantError("OpenRouter API key is missing. Open Settings to add it.")
+
+    candidates = candidates or configured_models(cfg)
+    failures = []
+
+    for model in candidates:
+        request_payload = dict(payload)
+        request_payload["model"] = model
+        request = urllib.request.Request(
+            OPENROUTER_URL,
+            data=json.dumps(request_payload).encode("utf-8"),
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "http://localhost",
+                "X-Title": "JARVIS Desktop",
+            },
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                data = json.loads(response.read())
+
+            problem = data.get("error")
+            if isinstance(problem, dict):
+                raise AssistantError(str(problem.get("message") or problem))
+
+            choices = data.get("choices") or []
+            message = (choices[0].get("message") or {}) if choices else {}
+            if not message or not (message.get("content") or message.get("tool_calls")):
+                raise AssistantError("Provider returned an empty response.")
+
+            log(f"AI model selected: {model}")
+            with MODEL_COOLDOWN_LOCK:
+                MODEL_COOLDOWNS.pop(model, None)
+            return {"message": message, "model": model}
+
+        except urllib.error.HTTPError as err:
+            detail = err.read()[:700].decode("utf-8", "replace")
+            failures.append(f"{model}: HTTP {err.code} {detail[:220]}")
+            # Authentication, billing, and malformed-request errors affect the
+            # whole account/request; model switching will not fix them.
+            if err.code in (401, 402, 403):
+                break
+            cooldown = 900 if err.code == 429 else 90 if err.code >= 500 else 30
+            with MODEL_COOLDOWN_LOCK:
+                MODEL_COOLDOWNS[model] = time.monotonic() + cooldown
+            continue
+
+        except (urllib.error.URLError, TimeoutError) as err:
+            failures.append(f"{model}: connection/timeout: {err}")
+            with MODEL_COOLDOWN_LOCK:
+                MODEL_COOLDOWNS[model] = time.monotonic() + 45
+            continue
+
+        except (json.JSONDecodeError, AssistantError) as err:
+            failures.append(f"{model}: {err}")
+            with MODEL_COOLDOWN_LOCK:
+                MODEL_COOLDOWNS[model] = time.monotonic() + 60
+            continue
+
+    summary = " | ".join(failures[-5:])
+    raise AssistantError("Every available JARVIS model failed. " + summary)
 
 
 def think(cfg: dict, user_text: str) -> str:
@@ -201,17 +332,19 @@ def think(cfg: dict, user_text: str) -> str:
     if memory_context != "No saved memories yet.":
         system += "\n\nSaved user memory (use only when relevant):\n" + memory_context
     request_messages = [{"role": "system", "content": system}, *history, *messages]
+    candidates = route_models(cfg, user_text)
+    log("Model route: " + " -> ".join(candidates))
 
     for _ in range(4):
         payload = {
-            "model": cfg.get("OPENROUTER_MODEL", DEFAULTS["OPENROUTER_MODEL"]),
+            "model": candidates[0],
             "messages": request_messages,
             "tools": TOOL_DEFINITIONS,
             "tool_choice": "auto",
             "max_tokens": 1200,
         }
         try:
-            result = openrouter_post(cfg, payload)
+            result = openrouter_post(cfg, payload, candidates)
         except AssistantError as err:
             # Some free model/provider routes reject function calling. Retry as plain chat.
             detail = str(err).casefold()
@@ -221,12 +354,13 @@ def think(cfg: dict, user_text: str) -> str:
             if not unsupported_tools:
                 raise
             fallback_payload = {
-                "model": cfg.get("OPENROUTER_MODEL", DEFAULTS["OPENROUTER_MODEL"]),
+                "model": candidates[0],
                 "messages": request_messages,
                 "max_tokens": 1200,
             }
-            result = openrouter_post(cfg, fallback_payload)
+            result = openrouter_post(cfg, fallback_payload, candidates)
         message = result.get("message") or {}
+        log("Response generated by: " + str(result.get("model", "unknown")))
         tool_calls = message.get("tool_calls") or []
         if tool_calls:
             request_messages.append(message)
@@ -425,7 +559,7 @@ class SettingsDialog(QDialog):
 
         fields = [
             ("OPENROUTER_API_KEY", "OpenRouter API key", True),
-            ("OPENROUTER_MODEL", "OpenRouter model", False),
+            ("OPENROUTER_MODELS", "OpenRouter model pool (comma-separated)", False),
             ("FISH_API_KEY", "Fish Audio API key", True),
             ("FISH_VOICE_ID", "Fish Audio voice ID", False),
             ("FISH_MODEL", "Fish Audio model", False),
