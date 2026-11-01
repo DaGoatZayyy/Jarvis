@@ -470,6 +470,24 @@ def detect_common_windows_command(user_text: str):
     for action, pattern in actions.items():
         if re.match(pattern, text):
             return ("windows_action", {"action": action})
+    # File/folder creation and diagnostics are also recognized deterministically.
+    match = re.match(r"^(?:please )?(?:create|make) (?:a )?(file|folder) (?:named )?(.+)$", text)
+    if match:
+        return ("create_project_item", {
+            "item_type": match.group(1),
+            "relative_path": match.group(2).strip().strip('"'),
+            "content": "",
+        })
+    match = re.match(r"^confirm delete (.+)$", text)
+    if match:
+        return ("delete_project_item", {"relative_path": match.group(1).strip().strip('"')})
+    command_aliases = {
+        "python --version": "python_version",
+        "git --version": "git_version",
+    }
+    match = re.match(r"^(?:please )?(?:run|execute) (whoami|hostname|ipconfig|tasklist|systeminfo|python --version|git --version)$", text)
+    if match:
+        return ("run_safe_command", {"command_id": command_aliases.get(match.group(1), match.group(1))})
     return None
 
 
