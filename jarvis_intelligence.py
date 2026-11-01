@@ -358,7 +358,7 @@ def windows_action(action: str):
 # Restricted Windows automation helpers.
 CLOSE_APP_ALLOWLIST = {
     "notepad": "notepad.exe", "calculator": "CalculatorApp.exe",
-    "file explorer": "explorer.exe", "task manager": "Taskmgr.exe",
+    "task manager": "Taskmgr.exe",
     "paint": "mspaint.exe", "terminal": "WindowsTerminal.exe",
 }
 SAFE_COMMANDS = {
@@ -425,7 +425,7 @@ def delete_project_item(relative_path: str):
                         ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", wintypes.LPCWSTR)]
         operation = SHFILEOPSTRUCTW()
         operation.wFunc = 3
-        operation.pFrom = str(path) + "\\0\\0"
+        operation.pFrom = str(path) + "\0\0"
         operation.fFlags = 0x40 | 0x10 | 0x4
         result = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(operation))
         if result != 0 or operation.fAnyOperationsAborted:
@@ -445,8 +445,8 @@ def run_safe_command(command_id: str):
                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         output = (result.stdout or "").strip()
         if result.stderr:
-            output = (output + "\\n" + result.stderr.strip()).strip()
-        return f"Command {key} exited with code {result.returncode}.\\n{output[:4500] or '(no output)'}"
+            output = (output + "\n" + result.stderr.strip()).strip()
+        return f"Command {key} exited with code {result.returncode}.\n{output[:4500] or '(no output)'}"
     except (OSError, subprocess.SubprocessError) as exc:
         return f"Command {key} failed: {exc}"
 
