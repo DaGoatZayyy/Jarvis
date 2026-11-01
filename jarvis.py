@@ -460,6 +460,24 @@ def think(cfg: dict, user_text: str) -> str:
                         execute_tool(name, arguments) if explicit_screen_request
                         else "Screen capture is blocked because the latest user request did not explicitly ask about screen content."
                     )
+                elif name == "create_project_item":
+                    creation_requested = any(term in user_text.casefold() for term in ("create", "make", "new file", "new folder", "add a file", "add a folder"))
+                    tool_result = (
+                        execute_tool(name, arguments) if creation_requested
+                        else "File or folder creation was blocked because the user did not explicitly request it."
+                    )
+                elif name == "close_app":
+                    close_requested = any(term in user_text.casefold() for term in ("close", "quit", "exit"))
+                    tool_result = (
+                        execute_tool(name, arguments) if close_requested
+                        else "App closing was blocked because the user did not explicitly request it."
+                    )
+                elif name == "run_safe_command":
+                    command_requested = any(term in user_text.casefold() for term in ("run", "execute", "command", "ipconfig", "whoami", "hostname", "tasklist", "systeminfo", "version"))
+                    tool_result = (
+                        execute_tool(name, arguments) if command_requested
+                        else "Command execution was blocked because the user did not explicitly request a diagnostic command."
+                    )
                 elif name == "delete_project_item":
                     requested_path = str(arguments.get("relative_path", "")).strip().replace("\\", "/")
                     prefix = "confirm delete "
