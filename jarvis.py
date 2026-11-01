@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
-from jarvis_intelligence import (TOOL_DEFINITIONS, execute_tool, load_history, save_history, recall_memory, capture_screen_data_url, load_memory, save_memory)
+from jarvis_intelligence import (TOOL_DEFINITIONS, execute_tool, load_history, save_history, recall_memory, capture_screen_data_url, load_memory, save_memory, detect_common_windows_command)
 from jarvis_ai import create_provider
 from jarvis_local import OllamaProvider
 from jarvis_plugins import load_plugins
@@ -143,18 +143,34 @@ _history_lock = threading.Lock()
 
 def system_prompt(cfg: dict) -> str:
     title = cfg.get("JARVIS_CALLS_YOU", "sir").strip() or "sir"
-
     return (
-        "You are J.A.R.V.I.S., a concise desktop AI assistant. "
+        "You are J.A.R.V.I.S., a capable Windows desktop assistant. "
         f'Address the user as "{title}". '
-        "Be calm, precise and helpful. "
-        "Your response will be spoken aloud, so use natural spoken language. "
-        "Use desktop tools when they help. Only capture the screen when the user explicitly asks about visible screen content. Never launch an app unless asked. Only save a memory when the user clearly asks you to remember it. Only write or modify project files when the user explicitly asks for an edit; otherwise inspect and explain. "
+        "Speak naturally and concisely because responses are read aloud. "
+        "DESKTOP ACTION RULES: When the user asks you to open, launch, start, close, quit, create, "
+        "delete, inspect, or otherwise operate something on this PC, use the matching tool. "
+        "Do not merely explain how to do it when an available tool can perform it. "
+        "Never say an action succeeded unless its tool result explicitly confirms success. "
+        "If a tool reports failure, say it failed and summarize the actual error. "
+        "For Task Manager use windows_action(open_task_manager); File Explorer use windows_action(open_file_explorer); "
+        "Settings use windows_action(open_settings); Notepad, Calculator, Paint and Terminal use open_app. "
+        "For closing an app use close_app and only select an approved app. "
+        "Create new files or folders with create_project_item using a relative path inside the configured project folder. "
+        "Never overwrite existing files. For deletion, proceed only if the latest user message itself begins "
+        "with 'confirm delete ' followed by the exact relative path. Otherwise ask for that confirmation. "
+        "Deletion moves items to the Windows Recycle Bin. "
+        "For terminal requests use run_safe_command only with its predefined read-only diagnostics. "
+        "Never run arbitrary PowerShell, CMD, scripts, installers, security changes, or destructive commands. "
+        "Use list_running_apps for process discovery; never terminate system, security, or unknown processes. "
+        "Use project listing/reading tools to inspect code. Only write project files when the user explicitly "
+        "requests an edit; keep edits inside the configured project and preserve backups. "
+        "Capture the screen only when explicitly asked about visible screen content. "
+        "Save or forget memory only when explicitly requested. "
+        "For ordinary questions, answer directly without unnecessary tools. "
+        "Never claim to have opened, closed, created, deleted, run, or changed anything without a successful tool result. "
         "Avoid markdown, lists, emojis, URLs and code unless requested. "
-        f"The local date and time is "
-        f"{time.strftime('%A, %B %d, %Y, %I:%M %p')}."
+        f"The local date and time is {time.strftime('%A, %B %d, %Y, %I:%M %p')}."
     )
-
 
 MODEL_CATALOG = {
     "recursive/flint-v1.0:free": "coding and software engineering",
@@ -361,6 +377,20 @@ def think(cfg: dict, user_text: str) -> str:
     request_messages = [{"role": "system", "content": system}, *history,
                         {"role": "user", "content": user_text}]
 
+    # Exact common app commands are handled locally, not left to probabilistic tool selection.
+    direct_command = detect_common_windows_command(user_text)
+    if direct_command:
+        tool_name, arguments = direct_command
+        result = execute_tool(tool_name, arguments)
+        log(f"Direct desktop command: {tool_name} {arguments} -> {result}")
+        reply = str(result)
+        with _history_lock:
+            _history.extend([{"role": "user", "content": user_text},
+                             {"role": "assistant", "content": reply}])
+            del _history[:-80]
+            save_history(_history)
+        return reply
+
     provider, provider_name = create_provider(
         cfg, lambda payload, candidates=None: openrouter_post(cfg, payload, candidates),
         logger=log,
@@ -429,6 +459,15 @@ def think(cfg: dict, user_text: str) -> str:
                     tool_result = (
                         execute_tool(name, arguments) if explicit_screen_request
                         else "Screen capture is blocked because the latest user request did not explicitly ask about screen content."
+                    )
+                elif name == "delete_project_item":
+                    requested_path = str(arguments.get("relative_path", "")).strip().replace("\\", "/")
+                    prefix = "confirm delete "
+                    confirmation = user_text.casefold().strip()
+                    confirmed = confirmation.startswith(prefix) and user_text.strip()[len(prefix):].strip().replace("\\", "/") == requested_path
+                    tool_result = (
+                        execute_tool(name, arguments) if confirmed
+                        else "Deletion not performed. Ask the user to say: confirm delete " + requested_path
                     )
                 elif name == "write_project_file":
                     edit_terms = ("edit", "modify", "change", "update", "rewrite", "fix", "implement", "add feature", "write to")
