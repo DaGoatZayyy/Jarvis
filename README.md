@@ -24,7 +24,8 @@ A Windows system-tray voice assistant with push-to-talk, switchable OpenRouter o
 - Tray notifications, settings dialog, voice test and activity log.
 - Editable long-term memory manager in the tray menu; review, edit, remove or clear saved facts.
 - Hands-free conversation mode: after each spoken response, JARVIS listens for a follow-up and returns to idle after a quiet timeout.
-- Windows voice actions for File Explorer, Task Manager, Settings, show desktop, volume and locking Windows.
+- Windows voice actions for File Explorer, Task Manager, Settings, show desktop, volume and locking Windows. Exact common open/close requests are detected locally before the AI call.
+- Expanded automation for allowlisted app closing, creating project files/folders, Recycle Bin deletion with exact spoken confirmation, and predefined read-only diagnostic commands.
 - Project-aware coding tools to list and read files and apply explicitly requested edits with local backups. Choose the project folder from the tray menu.
 - Local Python plugin system: add reviewed plugins to the plugins folder without changing the core application.
 
@@ -112,7 +113,7 @@ OpenRouter currently documents a free-model account limit of 20 requests per min
 
 ## Windows automation
 
-Ask JARVIS to open File Explorer, open Task Manager or Settings, show the desktop, adjust or mute volume, or lock Windows. These actions use a fixed allowlist; JARVIS does not run arbitrary PowerShell or shell commands. Hands-free conversation mode can be enabled from the tray menu. It listens for a follow-up after each spoken reply and ends the session after a quiet/no-speech timeout; turn it off in the tray menu at any time.
+Ask JARVIS to open or close supported apps, open File Explorer, Task Manager or Settings, show the desktop, adjust or mute volume, or lock Windows. Exact common open/close requests are detected locally before the AI call, so these actions do not rely on the model choosing a tool. App closing is allowlisted. Set a coding project folder to let JARVIS create files and folders there; creation never overwrites existing files. Deletion is restricted to that project folder and moves items to the Windows Recycle Bin. JARVIS requires the exact follow-up phrase confirm delete followed by the relative path. Terminal support is limited to predefined read-only diagnostics such as whoami, hostname, ipconfig, tasklist, systeminfo, and version checks. Arbitrary PowerShell, CMD, scripts, installers, and destructive commands are not supported. Hands-free conversation mode can be enabled from the tray menu. It listens for a follow-up after each spoken reply and ends the session after a quiet/no-speech timeout; turn it off in the tray menu at any time.
 
 ## Project-aware coding assistant
 
