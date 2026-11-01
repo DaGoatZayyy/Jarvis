@@ -350,7 +350,17 @@ def windows_action(action: str):
                 key = {"volume_up": 0xAF, "volume_down": 0xAE, "volume_mute": 0xAD}[action]
                 user32.keybd_event(key, 0, 0, 0)
                 user32.keybd_event(key, 0, 2, 0)
-        return actions[action] + "."
+        success_messages = {
+            "open_file_explorer": "File Explorer opened.",
+            "open_task_manager": "Task Manager opened.",
+            "open_settings": "Windows Settings opened.",
+            "show_desktop": "Desktop shown.",
+            "volume_up": "System volume increased.",
+            "volume_down": "System volume decreased.",
+            "volume_mute": "System mute toggled.",
+            "lock_workstation": "Windows lock request sent.",
+        }
+        return success_messages[action]
     except Exception as exc:
         return f"Windows action failed: {exc}"
 
