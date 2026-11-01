@@ -354,6 +354,125 @@ def windows_action(action: str):
     except Exception as exc:
         return f"Windows action failed: {exc}"
 
+
+# Restricted Windows automation helpers.
+CLOSE_APP_ALLOWLIST = {
+    "notepad": "notepad.exe", "calculator": "CalculatorApp.exe",
+    "file explorer": "explorer.exe", "task manager": "Taskmgr.exe",
+    "paint": "mspaint.exe", "terminal": "WindowsTerminal.exe",
+}
+SAFE_COMMANDS = {
+    "whoami": ["whoami"], "hostname": ["hostname"], "ipconfig": ["ipconfig"],
+    "tasklist": ["tasklist"], "systeminfo": ["systeminfo"],
+    "python_version": ["py", "--version"], "git_version": ["git", "--version"],
+}
+
+def close_app(app_name: str):
+    key = " ".join(str(app_name).casefold().split())
+    image = CLOSE_APP_ALLOWLIST.get(key)
+    if not image:
+        return "That application is not in the approved close list. Available: " + ", ".join(CLOSE_APP_ALLOWLIST)
+    try:
+        result = subprocess.run(["taskkill.exe", "/IM", image], capture_output=True, text=True,
+                                timeout=8, check=False,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        output = (result.stdout or result.stderr or "").strip()
+        if result.returncode == 0:
+            return f"Close request sent to {key}."
+        if "not found" in output.casefold():
+            return f"{key.capitalize()} does not appear to be running."
+        return f"Windows could not close {key}: {output[:400]}"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"Could not close {key}: {exc}"
+
+def create_project_item(relative_path: str, item_type: str = "file", content: str = ""):
+    try:
+        root, path = _safe_project_path(relative_path)
+        kind = str(item_type).casefold()
+        if path == root or kind not in ("file", "folder") or not path.parent.is_dir():
+            return "Choose a file or folder path inside an existing configured project folder."
+        if path.exists():
+            return "That path already exists; nothing was overwritten."
+        if path.name.casefold().startswith(".env") or path.suffix.casefold() in {".pem", ".key", ".pfx", ".p12"}:
+            return "JARVIS will not create credential or private-key files."
+        if kind == "folder":
+            path.mkdir()
+            return f"Created folder {path.relative_to(root)}."
+        text = str(content)
+        if len(text.encode("utf-8")) > 100_000:
+            return "The new file exceeds the 100 KB creation limit."
+        with path.open("x", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+        return f"Created file {path.relative_to(root)}."
+    except Exception as exc:
+        return f"Could not create the project item: {exc}"
+
+def delete_project_item(relative_path: str):
+    """Move a project item to the Windows Recycle Bin; never permanently unlink it."""
+    try:
+        root, path = _safe_project_path(relative_path)
+        if path == root or not path.exists():
+            return "That project item does not exist or is not deletable."
+        if path.name.casefold().startswith(".env") or path.suffix.casefold() in {".pem", ".key", ".pfx", ".p12"}:
+            return "JARVIS will not delete credential or private-key files."
+        if os.name != "nt":
+            return "Recycle Bin deletion is available only on Windows."
+        from ctypes import wintypes
+        class SHFILEOPSTRUCTW(ctypes.Structure):
+            _fields_ = [("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT),
+                        ("pFrom", wintypes.LPCWSTR), ("pTo", wintypes.LPCWSTR),
+                        ("fFlags", wintypes.WORD), ("fAnyOperationsAborted", wintypes.BOOL),
+                        ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", wintypes.LPCWSTR)]
+        operation = SHFILEOPSTRUCTW()
+        operation.wFunc = 3
+        operation.pFrom = str(path) + "\\0\\0"
+        operation.fFlags = 0x40 | 0x10 | 0x4
+        result = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(operation))
+        if result != 0 or operation.fAnyOperationsAborted:
+            return f"Windows did not complete the Recycle Bin operation (code {result})."
+        return f"Moved {path.relative_to(root)} to the Windows Recycle Bin."
+    except Exception as exc:
+        return f"Could not move the project item to the Recycle Bin: {exc}"
+
+def run_safe_command(command_id: str):
+    key = str(command_id).strip().casefold()
+    command = SAFE_COMMANDS.get(key)
+    if not command:
+        return "That command is not approved. Available read-only commands: " + ", ".join(SAFE_COMMANDS)
+    try:
+        result = subprocess.run(command, cwd=str(_project_root()), capture_output=True, text=True,
+                                timeout=20, check=False, shell=False,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        output = (result.stdout or "").strip()
+        if result.stderr:
+            output = (output + "\\n" + result.stderr.strip()).strip()
+        return f"Command {key} exited with code {result.returncode}.\\n{output[:4500] or '(no output)'}"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"Command {key} failed: {exc}"
+
+def detect_common_windows_command(user_text: str):
+    """Handle exact common open/close requests before model inference."""
+    text = " ".join(str(user_text).casefold().split()).strip(" .!?")
+    aliases = {"explorer": "file explorer", "calc": "calculator"}
+    match = re.match(r"^(?:please )?(?:open|launch|start|run) (?:the )?(task manager|file explorer|explorer|notepad|calculator|calc|paint|settings|terminal)$", text)
+    if match:
+        app = aliases.get(match.group(1), match.group(1))
+        return ("windows_action", {"action": "open_task_manager"}) if app == "task manager" else (("windows_action", {"action": "open_file_explorer"}) if app == "file explorer" else (("windows_action", {"action": "open_settings"}) if app == "settings" else ("open_app", {"app_name": app})))
+    match = re.match(r"^(?:please )?(?:close|quit|exit) (?:the )?(task manager|file explorer|explorer|notepad|calculator|calc|paint|terminal)$", text)
+    if match:
+        return ("close_app", {"app_name": aliases.get(match.group(1), match.group(1))})
+    actions = {
+        "show_desktop": r"^(?:please )?(?:show|go to) (?:the )?desktop$",
+        "volume_mute": r"^(?:please )?(?:mute|unmute) (?:the )?(?:system )?volume$",
+        "volume_up": r"^(?:please )?(?:turn|volume) (?:the )?volume up$",
+        "volume_down": r"^(?:please )?(?:turn|volume) (?:the )?volume down$",
+    }
+    for action, pattern in actions.items():
+        if re.match(pattern, text):
+            return ("windows_action", {"action": action})
+    return None
+
+
 TOOL_DEFINITIONS = [
     {"type": "function", "function": {"name": "describe_screen", "description": "Capture and inspect the current primary screen. Use only when the user explicitly asks what is on their screen or asks for help with something visible.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "get_system_status", "description": "Read current CPU, memory, disk, battery, network totals and available NVIDIA GPU telemetry.", "parameters": {"type": "object", "properties": {}, "required": []}}},
@@ -364,6 +483,10 @@ TOOL_DEFINITIONS = [
     {"type": "function", "function": {"name": "forget_memory", "description": "Remove saved memory entries matching the user's explicit request.", "parameters": {"type": "object", "properties": {"fact": {"type": "string"}}, "required": ["fact"]}}},
     {"type": "function", "function": {"name": "web_search", "description": "Search the web for current information and return a few result titles and links.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
     {"type": "function", "function": {"name": "windows_action", "description": "Perform one standard Windows desktop action from a fixed safe allowlist.", "parameters": {"type": "object", "properties": {"action": {"type": "string", "enum": ["open_file_explorer", "open_task_manager", "open_settings", "show_desktop", "volume_up", "volume_down", "volume_mute", "lock_workstation"]}}, "required": ["action"]}}},
+    {"type": "function", "function": {"name": "close_app", "description": "Close a running app from the approved application list only.", "parameters": {"type": "object", "properties": {"app_name": {"type": "string", "enum": list(CLOSE_APP_ALLOWLIST)}}, "required": ["app_name"]}}},
+    {"type": "function", "function": {"name": "create_project_item", "description": "Create a new file or folder inside the configured project directory without overwriting existing files.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}, "item_type": {"type": "string", "enum": ["file", "folder"]}, "content": {"type": "string"}}, "required": ["relative_path", "item_type"]}}},
+    {"type": "function", "function": {"name": "delete_project_item", "description": "Move a project item to the Recycle Bin only after the user's latest message explicitly confirms with 'confirm delete' and the exact relative path.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}}, "required": ["relative_path"]}}},
+    {"type": "function", "function": {"name": "run_safe_command", "description": "Run a predefined read-only diagnostic command only. Never accept arbitrary command text.", "parameters": {"type": "object", "properties": {"command_id": {"type": "string", "enum": list(SAFE_COMMANDS)}}, "required": ["command_id"]}}},
     {"type": "function", "function": {"name": "list_project_files", "description": "List files in the configured coding project directory, excluding dependency and version-control folders.", "parameters": {"type": "object", "properties": {"subdirectory": {"type": "string"}}, "required": []}}},
     {"type": "function", "function": {"name": "read_project_file", "description": "Read a text file from the configured coding project directory for code analysis.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}}, "required": ["relative_path"]}}},
     {"type": "function", "function": {"name": "write_project_file", "description": "Edit a project text file only when the user explicitly requested a code edit. Always preserve a backup. Never use for secrets.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}, "content": {"type": "string"}}, "required": ["relative_path", "content"]}}},
@@ -390,6 +513,14 @@ def execute_tool(name: str, arguments: dict):
         return web_search(arguments.get("query", ""))
     if name == "windows_action":
         return windows_action(arguments.get("action", ""))
+    if name == "close_app":
+        return close_app(arguments.get("app_name", ""))
+    if name == "create_project_item":
+        return create_project_item(arguments.get("relative_path", ""), arguments.get("item_type", "file"), arguments.get("content", ""))
+    if name == "delete_project_item":
+        return delete_project_item(arguments.get("relative_path", ""))
+    if name == "run_safe_command":
+        return run_safe_command(arguments.get("command_id", ""))
     if name == "list_project_files":
         return list_project_files(arguments.get("subdirectory", ""))
     if name == "read_project_file":
