@@ -247,4 +247,4 @@ Do not speak passwords, API keys, financial details or other sensitive informati
 - `run.bat` — background launch.
 - `.env.example` — safe configuration template.
 - `.env` — private local credentials and settings; ignored by Git.
-- `jarvis_history.json` / `jarvis_memory.json` — local conversation history and saved memory.
+- `jarvis_history.json` / `jarvis_memory.json` / `jarvis_skills.json` — local conversation history, saved memory and user-approved learned procedures.
