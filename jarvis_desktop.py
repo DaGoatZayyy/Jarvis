@@ -219,7 +219,7 @@ def launch_discovered_app(app_name: str):
     if item is None:
         return "I found several possible matches. Please say one exact app name: " + ", ".join(x["name"] for x in choices)
     target = item["target"]
-    before_pids = {window["pid"] for window in _visible_windows()}
+    before_hwnds = {window["hwnd"] for window in _visible_windows()}
     try:
         path = Path(target.strip('"'))
         if path.suffix.casefold() == ".lnk":
@@ -228,7 +228,7 @@ def launch_discovered_app(app_name: str):
             # Associate newly created top-level windows with this launch when possible.
             deadline = time.monotonic() + 2.5
             while time.monotonic() < deadline:
-                new_windows = [w for w in _visible_windows() if w["pid"] not in before_pids]
+                new_windows = [w for w in _visible_windows() if w["hwnd"] not in before_hwnds]
                 if new_windows:
                     pid = new_windows[-1]["pid"]
                     break
