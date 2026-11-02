@@ -19,6 +19,7 @@ import psutil
 import mss
 from PIL import Image
 from jarvis_plugins import execute_plugin, plugin_tools
+from jarvis_desktop import (discover_apps, launch_discovered_app, close_discovered_app, run_project_python, save_skill, forget_skill, load_skills)
 
 ROOT = Path(__file__).resolve().parent
 HISTORY_FILE = ROOT / "jarvis_history.json"
@@ -153,7 +154,7 @@ def open_app(app_name: str):
     key = " ".join(str(app_name).casefold().split())
     command = APP_ALLOWLIST.get(key)
     if not command:
-        return "That app is not in the approved launch list. Available apps: " + ", ".join(APP_ALLOWLIST)
+        return launch_discovered_app(app_name)
     try:
         if key == "settings":
             os.startfile("ms-settings:")
@@ -379,6 +380,8 @@ SAFE_COMMANDS = {
 
 def close_app(app_name: str):
     key = " ".join(str(app_name).casefold().split())
+    if key not in CLOSE_APP_ALLOWLIST:
+        return close_discovered_app(app_name)
     image = CLOSE_APP_ALLOWLIST.get(key)
     if not image:
         return "That application is not in the approved close list. Available: " + ", ".join(CLOSE_APP_ALLOWLIST)
@@ -488,6 +491,12 @@ def detect_common_windows_command(user_text: str):
             "relative_path": match.group(2).strip().strip('"'),
             "content": "",
         })
+    match = re.match(r"^(?:please )?(?:open|launch|start) (.+)$", text)
+    if match and match.group(1) not in {"file explorer", "explorer", "task manager", "settings", "notepad", "calculator", "calc", "paint", "terminal"}:
+        return ("launch_discovered_app", {"app_name": match.group(1)})
+    match = re.match(r"^(?:please )?(?:close|quit|exit) (.+)$", text)
+    if match and match.group(1) not in {"file explorer", "explorer", "task manager", "settings", "notepad", "calculator", "calc", "paint", "terminal"}:
+        return ("close_discovered_app", {"app_name": match.group(1)})
     match = re.match(r"^confirm delete (.+)$", text)
     if match:
         return ("delete_project_item", {"relative_path": match.group(1).strip().strip('"')})
@@ -515,6 +524,13 @@ TOOL_DEFINITIONS = [
     {"type": "function", "function": {"name": "create_project_item", "description": "Create a new file or folder inside the configured project directory without overwriting existing files.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}, "item_type": {"type": "string", "enum": ["file", "folder"]}, "content": {"type": "string"}}, "required": ["relative_path", "item_type"]}}},
     {"type": "function", "function": {"name": "delete_project_item", "description": "Move a project item to the Recycle Bin only after the user's latest message explicitly confirms with 'confirm delete' and the exact relative path.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}}, "required": ["relative_path"]}}},
     {"type": "function", "function": {"name": "run_safe_command", "description": "Run a predefined read-only diagnostic command only. Never accept arbitrary command text.", "parameters": {"type": "object", "properties": {"command_id": {"type": "string", "enum": list(SAFE_COMMANDS)}}, "required": ["command_id"]}}},
+    {"type": "function", "function": {"name": "discover_apps", "description": "Search installed Windows applications and Start Menu shortcuts without launching them.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
+    {"type": "function", "function": {"name": "launch_discovered_app", "description": "Find and launch an installed Windows app by its displayed name.", "parameters": {"type": "object", "properties": {"app_name": {"type": "string"}}, "required": ["app_name"]}}},
+    {"type": "function", "function": {"name": "close_discovered_app", "description": "Find matching app windows and send a normal WM_CLOSE request; never force-kill arbitrary processes.", "parameters": {"type": "object", "properties": {"app_name": {"type": "string"}}, "required": ["app_name"]}}},
+    {"type": "function", "function": {"name": "run_project_python", "description": "Run an existing Python script from the configured project directory in a hidden window, with a timeout and captured output. Only use when the user explicitly asks to run that script.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}, "arguments": {"type": "string"}}, "required": ["relative_path"]}}},
+    {"type": "function", "function": {"name": "save_skill", "description": "Save a user-approved reusable natural-language skill after a task succeeds. Never save code or secrets.", "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "trigger": {"type": "string"}, "procedure": {"type": "string"}}, "required": ["name", "trigger", "procedure"]}}},
+    {"type": "function", "function": {"name": "forget_skill", "description": "Remove a saved learned skill by exact name when the user asks.", "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}},
+    {"type": "function", "function": {"name": "list_skills", "description": "List the user's saved reusable skills.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "list_project_files", "description": "List files in the configured coding project directory, excluding dependency and version-control folders.", "parameters": {"type": "object", "properties": {"subdirectory": {"type": "string"}}, "required": []}}},
     {"type": "function", "function": {"name": "read_project_file", "description": "Read a text file from the configured coding project directory for code analysis.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}}, "required": ["relative_path"]}}},
     {"type": "function", "function": {"name": "write_project_file", "description": "Edit a project text file only when the user explicitly requested a code edit. Always preserve a backup. Never use for secrets.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}, "content": {"type": "string"}}, "required": ["relative_path", "content"]}}},
@@ -549,6 +565,21 @@ def execute_tool(name: str, arguments: dict):
         return delete_project_item(arguments.get("relative_path", ""))
     if name == "run_safe_command":
         return run_safe_command(arguments.get("command_id", ""))
+    if name == "discover_apps":
+        return discover_apps(arguments.get("query", ""))
+    if name == "launch_discovered_app":
+        return launch_discovered_app(arguments.get("app_name", ""))
+    if name == "close_discovered_app":
+        return close_discovered_app(arguments.get("app_name", ""))
+    if name == "run_project_python":
+        return run_project_python(arguments.get("relative_path", ""), arguments.get("arguments", ""))
+    if name == "save_skill":
+        return save_skill(arguments.get("name", ""), arguments.get("trigger", ""), arguments.get("procedure", ""))
+    if name == "forget_skill":
+        return forget_skill(arguments.get("name", ""))
+    if name == "list_skills":
+        skills = load_skills()
+        return "\n".join(f"{item['name']} — trigger: {item['trigger']} — enabled: {item.get('enabled', True)}" for item in skills) or "No learned skills saved yet."
     if name == "list_project_files":
         return list_project_files(arguments.get("subdirectory", ""))
     if name == "read_project_file":
