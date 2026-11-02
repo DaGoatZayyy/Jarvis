@@ -379,9 +379,12 @@ SAFE_COMMANDS = {
 }
 
 def close_app(app_name: str):
+    # Prefer graceful window closure for every application; never force-kill by image name.
+    return close_discovered_app(app_name)
+
+
+def _legacy_close_app_disabled(app_name: str):
     key = " ".join(str(app_name).casefold().split())
-    if key not in CLOSE_APP_ALLOWLIST:
-        return close_discovered_app(app_name)
     image = CLOSE_APP_ALLOWLIST.get(key)
     if not image:
         return "That application is not in the approved close list. Available: " + ", ".join(CLOSE_APP_ALLOWLIST)
