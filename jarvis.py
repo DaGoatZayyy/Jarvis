@@ -161,7 +161,7 @@ def system_prompt(cfg: dict) -> str:
         "Never overwrite existing files. For deletion, proceed only if the latest user message itself begins "
         "with 'confirm delete ' followed by the exact relative path. Otherwise ask for that confirmation. "
         "Deletion moves items to the Windows Recycle Bin. "
-        "For terminal requests use run_safe_command for read-only diagnostics. The run_project_python tool may run an existing .py script only inside the configured project folder, only when the user explicitly names that script and asks to run it. "
+        "For terminal requests use run_safe_command for read-only diagnostics. The run_project_python tool may run an existing .py script only inside the configured project folder after the user says the exact phrase 'confirm run script ' followed by its exact relative path. This confirmation is always required, even when No Confirms is enabled, because scripts can make arbitrary changes. "
         "Never execute arbitrary CMD or PowerShell text, encoded commands, installers, destructive commands, or commands that change security/system configuration. "
         "For apps outside the basic list, use discover_apps to find installed entries, then launch_discovered_app. To close apps, use close_discovered_app, which sends a normal window close request and does not force-kill processes. "
         "Learned skills are natural-language procedures only. Use matching saved procedures as guidance. Never save a skill unless the user explicitly asks to save/learn it; never save or execute code as a skill. "
@@ -479,8 +479,11 @@ def think(cfg: dict, user_text: str) -> str:
                         else "App closing was blocked because the user did not explicitly request it."
                     )
                 elif name == "run_project_python":
-                    script_requested = any(term in user_text.casefold() for term in ("run ", "execute ", "launch ")) and ".py" in user_text.casefold()
-                    tool_result = (execute_tool(name, arguments) if script_requested else "Python script execution was blocked because the user did not explicitly ask to run a named .py script.")
+                    requested_path = str(arguments.get("relative_path", "")).strip().replace("\\", "/")
+                    confirmation = user_text.strip()
+                    prefix = "confirm run script "
+                    confirmed = confirmation.casefold().startswith(prefix) and confirmation[len(prefix):].strip().replace("\\", "/") == requested_path
+                    tool_result = (execute_tool(name, arguments) if confirmed else "Python script not run. Ask the user to say: confirm run script " + requested_path)
                 elif name == "save_skill":
                     learning_requested = any(term in user_text.casefold() for term in ("save this as a skill", "learn this", "remember this workflow", "save this workflow"))
                     tool_result = (execute_tool(name, arguments) if learning_requested else "Skill saving requires the user to explicitly ask JARVIS to save or learn this workflow.")
