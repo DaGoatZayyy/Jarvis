@@ -28,7 +28,7 @@ from jarvis_wakeword import WakeWordListener, get_input_device
 from PySide6.QtCore import QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
+    QApplication, QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
     QLineEdit, QMenu, QMessageBox, QPushButton, QStyle,
     QSystemTrayIcon, QTextEdit, QVBoxLayout, QWidget
 )
@@ -65,6 +65,7 @@ DEFAULTS = {
     "JARVIS_VOICE_VOLUME": "0.85",
     "JARVIS_VOICE_SPEED": "1.0",
     "JARVIS_PROJECT_DIR": "",
+    "JARVIS_NO_CONFIRMS": "0",
 }
 
 SAMPLE_RATE = 16000
@@ -161,6 +162,8 @@ def system_prompt(cfg: dict) -> str:
         "Deletion moves items to the Windows Recycle Bin. "
         "For terminal requests use run_safe_command only with its predefined read-only diagnostics. "
         "Never run arbitrary PowerShell, CMD, scripts, installers, security changes, or destructive commands. "
+        "Routine confirmation prompts may be skipped only when JARVIS_NO_CONFIRMS is enabled. "
+        "This setting NEVER bypasses explicit deletion confirmation, protected-operation checks, or blocked dangerous commands. "
         "Use list_running_apps for process discovery; never terminate system, security, or unknown processes. "
         "Use project listing/reading tools to inspect code. Only write project files when the user explicitly "
         "requests an edit; keep edits inside the configured project and preserve backups. "
@@ -750,6 +753,8 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(500)
 
         self.fields = {}
+        self.no_confirms = QCheckBox("No Confirms — skip routine action confirmations")
+        self.no_confirms.setChecked(str(settings.get("JARVIS_NO_CONFIRMS", "0")).strip().casefold() in ("1", "true", "yes", "on"))
         self.existing_secrets = {
             "OPENROUTER_API_KEY": settings.get("OPENROUTER_API_KEY", ""),
             "FISH_API_KEY": settings.get("FISH_API_KEY", ""),
@@ -791,8 +796,10 @@ class SettingsDialog(QDialog):
             form.addRow(label, edit)
 
         layout.addLayout(form)
+        layout.addWidget(self.no_confirms)
 
         note = QLabel(
+            "No Confirms skips ordinary confirmation prompts only. File deletion still requires the exact confirmation phrase, and dangerous commands remain blocked or protected. "
             "Settings are saved in a .env file beside jarvis.py. "
             "API keys are hidden. Leave a key field blank to keep its current value."
         )
@@ -818,6 +825,7 @@ class SettingsDialog(QDialog):
             key: field.text().strip()
             for key, field in self.fields.items()
         }
+        values["JARVIS_NO_CONFIRMS"] = "1" if self.no_confirms.isChecked() else "0"
         for key, old_value in self.existing_secrets.items():
             if not values.get(key):
                 values[key] = old_value
