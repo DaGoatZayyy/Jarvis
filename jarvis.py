@@ -38,6 +38,7 @@ from jarvis_intelligence import (TOOL_DEFINITIONS, execute_tool, load_history, s
 from jarvis_ai import create_provider
 from jarvis_local import OllamaProvider
 from jarvis_plugins import load_plugins
+from jarvis_desktop import skills_context, load_skills, replace_skills
 
 
 ROOT = Path(__file__).resolve().parent
@@ -160,8 +161,10 @@ def system_prompt(cfg: dict) -> str:
         "Never overwrite existing files. For deletion, proceed only if the latest user message itself begins "
         "with 'confirm delete ' followed by the exact relative path. Otherwise ask for that confirmation. "
         "Deletion moves items to the Windows Recycle Bin. "
-        "For terminal requests use run_safe_command only with its predefined read-only diagnostics. "
-        "Never run arbitrary PowerShell, CMD, scripts, installers, security changes, or destructive commands. "
+        "For terminal requests use run_safe_command for read-only diagnostics. The run_project_python tool may run an existing .py script only inside the configured project folder, only when the user explicitly names that script and asks to run it. "
+        "Never execute arbitrary CMD or PowerShell text, encoded commands, installers, destructive commands, or commands that change security/system configuration. "
+        "For apps outside the basic list, use discover_apps to find installed entries, then launch_discovered_app. To close apps, use close_discovered_app, which sends a normal window close request and does not force-kill processes. "
+        "Learned skills are natural-language procedures only. Use matching saved procedures as guidance. Never save a skill unless the user explicitly asks to save/learn it; never save or execute code as a skill. "
         "Routine confirmation prompts may be skipped only when JARVIS_NO_CONFIRMS is enabled. "
         "This setting NEVER bypasses explicit deletion confirmation, protected-operation checks, or blocked dangerous commands. "
         "Use list_running_apps for process discovery; never terminate system, security, or unknown processes. "
@@ -374,7 +377,7 @@ def think(cfg: dict, user_text: str) -> str:
     with _history_lock:
         history = list(_history)
     memory_context = recall_memory()
-    system = system_prompt(cfg)
+    system = system_prompt(cfg) + skills_context(user_text)
     if memory_context != "No saved memories yet.":
         system += "\n\nSaved user memory (use only when relevant):\n" + memory_context
     request_messages = [{"role": "system", "content": system}, *history,
@@ -475,6 +478,15 @@ def think(cfg: dict, user_text: str) -> str:
                         execute_tool(name, arguments) if close_requested
                         else "App closing was blocked because the user did not explicitly request it."
                     )
+                elif name == "run_project_python":
+                    script_requested = any(term in user_text.casefold() for term in ("run ", "execute ", "launch ")) and ".py" in user_text.casefold()
+                    tool_result = (execute_tool(name, arguments) if script_requested else "Python script execution was blocked because the user did not explicitly ask to run a named .py script.")
+                elif name == "save_skill":
+                    learning_requested = any(term in user_text.casefold() for term in ("save this as a skill", "learn this", "remember this workflow", "save this workflow"))
+                    tool_result = (execute_tool(name, arguments) if learning_requested else "Skill saving requires the user to explicitly ask JARVIS to save or learn this workflow.")
+                elif name == "forget_skill":
+                    forgetting_requested = any(term in user_text.casefold() for term in ("forget skill", "delete skill", "remove skill"))
+                    tool_result = (execute_tool(name, arguments) if forgetting_requested else "Skill removal requires an explicit user request.")
                 elif name == "run_safe_command":
                     command_requested = any(term in user_text.casefold() for term in ("run", "execute", "command", "ipconfig", "whoami", "hostname", "tasklist", "systeminfo", "version"))
                     tool_result = (
@@ -935,6 +947,40 @@ class MemoryDialog(QDialog):
         QMessageBox.information(self, "Memory saved", f"Saved {count} memory item(s).")
         self.accept()
 
+class SkillsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("J.A.R.V.I.S. Learned Skills")
+        self.resize(620, 480)
+        layout = QVBoxLayout(self)
+        note = QLabel("Review and edit learned procedures. Skills are stored as text guidance only; they cannot contain executable code.")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        self.editor = QTextEdit()
+        self.editor.setPlainText(json.dumps(load_skills(), ensure_ascii=False, indent=2))
+        layout.addWidget(self.editor)
+        buttons = QHBoxLayout()
+        cancel = QPushButton("Cancel")
+        save = QPushButton("Save skills")
+        cancel.clicked.connect(self.reject)
+        save.clicked.connect(self.save)
+        buttons.addStretch()
+        buttons.addWidget(cancel)
+        buttons.addWidget(save)
+        layout.addLayout(buttons)
+
+    def save(self):
+        try:
+            data = json.loads(self.editor.toPlainText() or "[]")
+            if not isinstance(data, list):
+                raise ValueError("Skills must be a JSON list.")
+            count = replace_skills(data)
+            QMessageBox.information(self, "Skills saved", f"Saved {count} skill(s).")
+            self.accept()
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Invalid skills", str(exc))
+
+
 class JarvisApp(QObject):
 
     def __init__(self, app: QApplication):
@@ -1011,6 +1057,10 @@ class JarvisApp(QObject):
         memory_action = QAction("Manage memory", menu)
         memory_action.triggered.connect(self.open_memory)
         menu.addAction(memory_action)
+
+        skills_action = QAction("Manage learned skills", menu)
+        skills_action.triggered.connect(self.open_skills)
+        menu.addAction(skills_action)
 
         project_action = QAction("Set coding project folder", menu)
         project_action.triggered.connect(self.set_project_folder)
@@ -1364,6 +1414,10 @@ class JarvisApp(QObject):
     def open_memory(self):
         dialog = MemoryDialog()
         dialog.exec()
+
+    @Slot()
+    def open_skills(self):
+        SkillsDialog().exec()
 
     @Slot()
     def set_project_folder(self):
