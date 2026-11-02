@@ -27,6 +27,10 @@ A Windows system-tray voice assistant with push-to-talk, switchable OpenRouter o
 - Hands-free conversation mode: after each spoken response, JARVIS listens for a follow-up and returns to idle after a quiet timeout.
 - Windows voice actions for File Explorer, Task Manager, Settings, show desktop, volume and locking Windows. Exact common open/close requests are detected locally before the AI call.
 - Expanded automation for allowlisted app closing, creating project files/folders, Recycle Bin deletion with exact spoken confirmation, and predefined read-only diagnostic commands.
+- Windows app discovery searches Start Menu shortcuts and Windows app registry entries, then launches matched installed apps by their resolved target.
+- Window-aware app closing sends a normal close message to matching windows instead of force-killing processes; unsaved-work prompts are left to the app.
+- Hidden Python runner can execute an explicitly confirmed existing .py script inside the configured project folder and captures its real exit code/stdout/stderr with a timeout.
+- Learned skills: save user-approved reusable written procedures, match them to later requests, and manage/edit/disable them from the tray menu. Skills are guidance text, not executable code.
 - Project-aware coding tools to list and read files and apply explicitly requested edits with local backups. Choose the project folder from the tray menu.
 - Local Python plugin system: add reviewed plugins to the plugins folder without changing the core application.
 
@@ -113,6 +117,13 @@ Edit `OPENROUTER_MODELS` in your .env file or in Settings to change the pool/ord
 OpenRouter currently documents a free-model account limit of 20 requests per minute and 50 requests per day; the daily allowance can change. Failed requests may also count toward the daily cap. If OpenRouter reports an account-wide daily limit, JARVIS stops retrying because switching models will not bypass it. Check OpenRouter's current rate-limit documentation for the latest rules.
 
 ## Windows automation
+
+J.A.R.V.I.S. can search Start Menu shortcuts and Windows app registry entries when an application is not in the basic launch list. Ask it to "find [app]" or "open [app]". If several apps match, it asks you to choose a specific name. For apps it launched, it records the process where possible. Closing uses a normal Windows window-close request (WM_CLOSE), giving apps a chance to ask about unsaved work; it does not force-kill unknown processes.
+
+The hidden runner supports the predefined read-only diagnostics listed below. It can also run an existing Python script inside the configured project folder, but only after you say the exact phrase `confirm run script relative/path.py`. This confirmation is always required, even with No Confirms enabled, because Python scripts can make changes. Script output, errors and exit status are captured; execution has a 45-second limit. Arbitrary CMD/PowerShell text, encoded commands, installers, destructive commands and system/security configuration changes are not enabled.
+
+Learned skills are saved as written procedures in `jarvis_skills.json`. Ask J.A.R.V.I.S. to "save this as a skill" after a workflow succeeds. It will not save a skill unless explicitly requested. Matching skills are added as guidance to later requests. Use **Manage learned skills** in the tray menu to review, edit, disable or remove them. Skills are not Python plugins and cannot execute code.
+
 
 Ask JARVIS to open or close supported apps, open File Explorer, Task Manager or Settings, show the desktop, adjust or mute volume, or lock Windows. Exact common open/close requests are detected locally before the AI call, so these actions do not rely on the model choosing a tool. App closing is allowlisted. Set a coding project folder to let JARVIS create files and folders there; creation never overwrites existing files. Deletion is restricted to that project folder and moves items to the Windows Recycle Bin. JARVIS requires the exact follow-up phrase confirm delete followed by the relative path. Terminal support is limited to predefined read-only diagnostics such as whoami, hostname, ipconfig, tasklist, systeminfo, and version checks. Arbitrary PowerShell, CMD, scripts, installers, and destructive commands are not supported. Hands-free conversation mode can be enabled from the tray menu. It listens for a follow-up after each spoken reply and ends the session after a quiet/no-speech timeout; turn it off in the tray menu at any time.
 
