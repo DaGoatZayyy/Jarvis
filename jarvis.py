@@ -725,10 +725,13 @@ def record_until_silence(stop_event: threading.Event, mode="wake") -> np.ndarray
                     if elapsed < 0.6:
                         ambient_levels.append(level)
                     ambient = float(np.median(ambient_levels)) if ambient_levels else 0.0
-                    threshold = max(280.0, ambient * 2.8)
+                    # Voicemod and other virtual microphones often produce quieter speech
+                    # than a physical mic. The old 280-RMS floor rejected normal speech.
+                    threshold = max(35.0, ambient * 1.5)
                     if level >= threshold:
                         started = True
                         last_voice_time = now
+                        log(f"Wake command speech detected: block_rms={level:.1f}, ambient={ambient:.1f}, threshold={threshold:.1f}")
                 elif level >= threshold:
                     last_voice_time = now
                 elif last_voice_time is not None and now - last_voice_time >= SILENCE_SECONDS:
