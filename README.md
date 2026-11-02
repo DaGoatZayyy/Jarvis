@@ -22,6 +22,7 @@ A Windows system-tray voice assistant with push-to-talk, switchable OpenRouter o
 - Fish Audio voice ID selection plus configurable playback volume and speed.
 - Press the push-to-talk hotkey during JARVIS playback to interrupt the spoken response.
 - Tray notifications, settings dialog, voice test and activity log.
+- **No Confirms** setting in Settings: skips routine confirmation prompts for explicitly requested actions. Exact deletion confirmation and protected/dangerous-operation safeguards are never bypassed.
 - Editable long-term memory manager in the tray menu; review, edit, remove or clear saved facts.
 - Hands-free conversation mode: after each spoken response, JARVIS listens for a follow-up and returns to idle after a quiet timeout.
 - Windows voice actions for File Explorer, Task Manager, Settings, show desktop, volume and locking Windows. Exact common open/close requests are detected locally before the AI call.
@@ -185,6 +186,7 @@ During voice playback, press the push-to-talk hotkey to stop the current reply a
 | `FISH_MODEL` | Fish Audio model |
 | `JARVIS_HOTKEY` | Global push-to-talk combination |
 | `JARVIS_PROJECT_DIR` | Optional coding project root selected from the tray menu |
+| `JARVIS_NO_CONFIRMS` | Skip routine action confirmations (`1` enabled, `0` disabled); does not bypass deletion confirmation or dangerous-operation protections |
 | `JARVIS_WAKE_WORD_ENABLED` | Enable local "Hey Jarvis" listener (`1` or `0`) |
 | `JARVIS_CALLS_YOU` | How JARVIS addresses you |
 | `JARVIS_SPEECH_LANGUAGE` | Speech recognition locale |
