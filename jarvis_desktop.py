@@ -342,7 +342,7 @@ def run_project_python(relative_path: str, arguments: str = ""):
         args = shlex.split(str(arguments), posix=False)
         if len(args) > 12 or any(len(arg) > 120 for arg in args):
             return "Too many or overly long script arguments."
-        command = [os.environ.get("PYTHON", "py"), "-I", "-S", str(script), *args]
+        command = [os.environ.get("PYTHON", "py"), "-I", str(script), *args]
         result = subprocess.run(command, cwd=str(root), capture_output=True, text=True,
                                 timeout=45, check=False, shell=False,
                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
