@@ -383,24 +383,6 @@ def close_app(app_name: str):
     return close_discovered_app(app_name)
 
 
-def _legacy_close_app_disabled(app_name: str):
-    key = " ".join(str(app_name).casefold().split())
-    image = CLOSE_APP_ALLOWLIST.get(key)
-    if not image:
-        return "That application is not in the approved close list. Available: " + ", ".join(CLOSE_APP_ALLOWLIST)
-    try:
-        result = subprocess.run(["taskkill.exe", "/IM", image], capture_output=True, text=True,
-                                timeout=8, check=False,
-                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        output = (result.stdout or result.stderr or "").strip()
-        if result.returncode == 0:
-            return f"Close request sent to {key}."
-        if "not found" in output.casefold():
-            return f"{key.capitalize()} does not appear to be running."
-        return f"Windows could not close {key}: {output[:400]}"
-    except (OSError, subprocess.SubprocessError) as exc:
-        return f"Could not close {key}: {exc}"
-
 def create_project_item(relative_path: str, item_type: str = "file", content: str = ""):
     try:
         root, path = _safe_project_path(relative_path)
