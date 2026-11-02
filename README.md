@@ -238,6 +238,7 @@ Do not speak passwords, API keys, financial details or other sensitive informati
 
 - `jarvis.py` — tray app, recording, AI requests and playback.
 - `jarvis_intelligence.py` — desktop tools, screen capture, web search, memory and history.
+- `jarvis_desktop.py` — Windows app discovery, graceful window closing, hidden project-script runner and local learned-skill storage.
 - `jarvis_ai.py` — provider abstraction and explicit provider selection.
 - `jarvis_local.py` — Ollama connectivity, model discovery and local chat requests.
 - `jarvis_plugins.py` — local Python plugin discovery and tool dispatch.
