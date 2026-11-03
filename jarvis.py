@@ -790,9 +790,19 @@ class SettingsDialog(QDialog):
             "OPENROUTER_API_KEY": settings.get("OPENROUTER_API_KEY", ""),
             "FISH_API_KEY": settings.get("FISH_API_KEY", ""),
         }
+        self.microphone = QComboBox()
+        self.microphone_status = QLabel("Detecting microphones...")
+        self.microphone_status.setWordWrap(True)
+        self.saved_microphone = str(settings.get("JARVIS_INPUT_DEVICE", "")).strip()
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
+        form.addRow("Microphone input", self.microphone)
+        refresh_mics = QPushButton("Refresh audio devices")
+        refresh_mics.clicked.connect(self.refresh_audio_devices)
+        form.addRow("", refresh_mics)
+        form.addRow("", self.microphone_status)
+        self.refresh_audio_devices()
 
         fields = [
             ("OPENROUTER_API_KEY", "OpenRouter API key", True),
@@ -851,12 +861,53 @@ class SettingsDialog(QDialog):
 
         layout.addLayout(buttons)
 
+    def refresh_audio_devices(self):
+        """Re-enumerate PortAudio input devices while preserving the current choice."""
+        selected = str(self.microphone.currentData() or self.saved_microphone)
+        try:
+            devices = sd.query_devices()
+            self.microphone.clear()
+            self.microphone.addItem("System default microphone", "")
+            found = 0
+            for index, device in enumerate(devices):
+                if int(device.get("max_input_channels", 0)) <= 0:
+                    continue
+                name = str(device.get("name", f"Input device {index}"))
+                host_api = ""
+                try:
+                    host_api_index = int(device.get("hostapi", -1))
+                    if host_api_index >= 0:
+                        host_api = str(sd.query_hostapis(host_api_index).get("name", ""))
+                except Exception:
+                    pass
+                label = f"{name} ({host_api})" if host_api else name
+                self.microphone.addItem(label, name)
+                found += 1
+
+            selected_index = self.microphone.findData(selected)
+            if selected_index >= 0:
+                self.microphone.setCurrentIndex(selected_index)
+                self.microphone_status.setText(f"Found {found} microphone input device(s). Current selection preserved.")
+            else:
+                self.microphone.setCurrentIndex(0)
+                if selected:
+                    self.microphone_status.setText(
+                        f"Found {found} microphone input device(s), but the saved device is unavailable. Select another microphone."
+                    )
+                else:
+                    self.microphone_status.setText(f"Found {found} microphone input device(s).")
+            log(f"Audio device refresh: found {found} microphone input device(s).")
+        except Exception as err:
+            self.microphone_status.setText(f"Could not refresh audio devices: {err}")
+            log(f"Audio device refresh failed: {err}")
+
     def values(self) -> dict:
         values = {
             key: field.text().strip()
             for key, field in self.fields.items()
         }
         values["JARVIS_NO_CONFIRMS"] = "1" if self.no_confirms.isChecked() else "0"
+        values["JARVIS_INPUT_DEVICE"] = str(self.microphone.currentData() or "")
         for key, old_value in self.existing_secrets.items():
             if not values.get(key):
                 values[key] = old_value
