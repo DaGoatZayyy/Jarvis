@@ -25,7 +25,7 @@ import speech_recognition as sr
 
 from jarvis_wakeword import WakeWordListener, get_input_device
 
-from PySide6.QtCore import QObject, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, QUrl, Signal, Slot, Qt
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
@@ -1637,7 +1637,7 @@ class JarvisApp(QObject):
     @Slot()
     def show_activity(self):
         if self.activity_window is None:
-            self.activity_window = QWidget()
+            self.activity_window = QWidget(None, Qt.WindowType.Window)
             self.activity_window.setWindowTitle(
                 "J.A.R.V.I.S. Activity"
             )
@@ -1662,9 +1662,10 @@ class JarvisApp(QObject):
 
             layout.addWidget(clear_button)
 
-        self.activity_window.show()
+        self.activity_window.showNormal()
         self.activity_window.raise_()
         self.activity_window.activateWindow()
+        log("Activity window opened.")
 
     def _append_activity(self, text: str):
         if self.activity_window is not None:
