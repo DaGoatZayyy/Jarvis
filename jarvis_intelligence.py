@@ -19,7 +19,7 @@ import psutil
 import mss
 from PIL import Image
 from jarvis_plugins import execute_plugin, plugin_tools
-from jarvis_desktop import (discover_apps, launch_discovered_app, close_discovered_app, run_project_python, save_skill, forget_skill, load_skills)
+from jarvis_desktop import (discover_apps, launch_discovered_app, close_discovered_app, run_project_python, resolve_spoken_python_path, save_skill, forget_skill, load_skills)
 
 ROOT = Path(__file__).resolve().parent
 HISTORY_FILE = ROOT / "jarvis_history.json"
@@ -448,6 +448,24 @@ def run_safe_command(command_id: str):
     except (OSError, subprocess.SubprocessError) as exc:
         return f"Command {key} failed: {exc}"
 
+def detect_spoken_script_command(user_text: str):
+    """Turn spoken script requests into a safe exact-path confirmation flow."""
+    text = " ".join(str(user_text).casefold().split()).strip(" .!?")
+    confirm = re.match(r"^(?:please )?confirm run script (.+)$", text)
+    if confirm:
+        resolved = resolve_spoken_python_path(confirm.group(1))
+        if not resolved:
+            return ("__reply__", {"message": "I couldn't match that spoken filename to one unique existing Python script in the configured project folder. Please type the exact relative filename; I did not run anything."})
+        return ("run_project_python", {"relative_path": resolved, "arguments": ""})
+    request = re.match(r"^(?:please )?run (?:the )?script (.+)$", text)
+    if request:
+        resolved = resolve_spoken_python_path(request.group(1))
+        if not resolved:
+            return ("__reply__", {"message": "I couldn't match that spoken filename to one unique existing Python script in the configured project folder. Please say or type its exact relative filename. Nothing was run."})
+        return ("__reply__", {"message": f"I found the existing script '{resolved}'. To run it, say: confirm run script {resolved}. This confirmation is required even when No Confirms is enabled."})
+    return None
+
+
 def detect_common_windows_command(user_text: str):
     """Handle exact common open/close requests before model inference."""
     text = " ".join(str(user_text).casefold().split()).strip(" .!?")
@@ -476,6 +494,11 @@ def detect_common_windows_command(user_text: str):
             "relative_path": match.group(2).strip().strip('"'),
             "content": "",
         })
+    match = re.match(r"^(?:please )?(?:find|search for|look for|locate) (?:the )?(?:installed )?(?:app )?(.+)$", text)
+    if match:
+        query = match.group(1).strip()
+        if query and query not in {"a file", "a folder"}:
+            return ("discover_apps", {"query": query})
     match = re.match(r"^(?:please )?(?:open|launch|start) (.+)$", text)
     if match and match.group(1) not in {"file explorer", "explorer", "task manager", "settings", "notepad", "calculator", "calc", "paint", "terminal"}:
         return ("launch_discovered_app", {"app_name": match.group(1)})
