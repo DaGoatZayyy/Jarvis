@@ -47,7 +47,7 @@ JARVIS is a Windows desktop voice assistant that runs in the system tray. It let
 6. Start JARVIS:
 
    ```powershell
-   .\\run.bat
+   .\run.bat
    ```
 
    JARVIS should appear in the Windows system tray. The batch launcher uses `pythonw` so a terminal window does not remain open. For troubleshooting, run `py jarvis.py` from PowerShell.
@@ -57,7 +57,7 @@ JARVIS is a Windows desktop voice assistant that runs in the system tray. It let
 If you installed it with Git:
 
 ```powershell
-cd path\\to\\Jarvis
+cd path\to\Jarvis
 git pull
 py -m pip install -r requirements.txt
 ```
