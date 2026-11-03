@@ -495,8 +495,59 @@ def detect_spoken_script_command(user_text: str):
     return None
 
 
+def _looks_like_website_address(value: str) -> bool:
+    """Recognize domain-shaped addresses without maintaining a website-name list."""
+    candidate = str(value or "").strip().strip('"').strip("'").rstrip(".,!?")
+    # Speech recognition sometimes spells out the separator.
+    candidate = re.sub(r"\\s+dot\\s+", ".", candidate, flags=re.I)
+    if candidate.casefold().startswith(("https://", "http://")):
+        candidate = candidate.split("://", 1)[1]
+    candidate = candidate.split("/", 1)[0].split(":", 1)[0]
+    if not candidate or " " in candidate or "." not in candidate:
+        return False
+    labels = candidate.rstrip(".").split(".")
+    if len(labels) < 2:
+        return False
+    # Avoid treating common executable/document extensions as websites.
+    non_web_extensions = {
+        "exe", "msi", "bat", "cmd", "ps1", "py", "pyw", "js", "ts", "json",
+        "txt", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip",
+        "rar", "7z", "png", "jpg", "jpeg", "gif", "mp3", "mp4", "mov",
+    }
+    if labels[-1].casefold() in non_web_extensions:
+        return False
+    if not re.fullmatch(r"[a-z]{2,63}", labels[-1], re.I):
+        return False
+    return all(
+        re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label, re.I)
+        for label in labels
+    )
+
+
+def _website_request_target(user_text: str):
+    """Return a domain/URL only when the user's wording clearly refers to a site."""
+    text = " ".join(str(user_text).strip().split()).strip(" .!?")
+    # A domain by itself is an unambiguous website request.
+    if _looks_like_website_address(text):
+        return re.sub(r"\\s+dot\\s+", ".", text, flags=re.I).rstrip(".,!?")
+    # For commands, classify by the target's address shape, not a list of site names.
+    match = re.match(
+        r"^(?:please )?(?:open|go to|visit|browse to|navigate to) "
+        r"(?:the )?(?:website )?(.+)$",
+        text,
+        re.I,
+    )
+    if not match:
+        return None
+    target = match.group(1).strip().strip('"').strip("'").rstrip(".,!?")
+    target = re.sub(r"\\s+dot\\s+", ".", target, flags=re.I)
+    if _looks_like_website_address(target):
+        return target
+    return None
+
+
 def detect_common_windows_command(user_text: str):
-    """Handle exact common open/close requests before model inference."""
+    """Handle clear desktop and website intents before model inference."""
     text = " ".join(str(user_text).casefold().split()).strip(" .!?")
     aliases = {"explorer": "file explorer", "calc": "calculator"}
     match = re.match(r"^(?:please )?(?:open|launch|start|run) (?:the )?(task manager|file explorer|explorer|notepad|calculator|calc|paint|settings|terminal)$", text)
@@ -528,12 +579,10 @@ def detect_common_windows_command(user_text: str):
         query = match.group(1).strip()
         if query and query not in {"a file", "a folder"}:
             return ("discover_apps", {"query": query})
-    # Explicit website requests are routed to the default browser before app discovery.
-    match = re.match(r"^(?:please )?(?:open|go to|visit|browse to) (?:the website )?(.+)$", text)
-    if match:
-        target = match.group(1).strip().strip('"').strip("'").rstrip(".,!?")
-        if re.match(r"^(?:https?://)?(?:[a-z0-9-]+[.])+[a-z]{2,}(?::[0-9]{1,5})?(?:/[^ ]*)?$", target, re.I):
-            return ("open_website", {"address": target})
+    # Domain-shaped targets are websites, not installed applications.
+    website_target = _website_request_target(user_text)
+    if website_target:
+        return ("open_website", {"address": website_target})
     match = re.match(r"^(?:please )?(?:open|launch|start) (.+)$", text)
     if match and match.group(1) not in {"file explorer", "explorer", "task manager", "settings", "notepad", "calculator", "calc", "paint", "terminal"}:
         return ("launch_discovered_app", {"app_name": match.group(1)})
