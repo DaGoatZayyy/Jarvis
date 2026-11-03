@@ -55,7 +55,7 @@ def search_local_files(query: str, root: str = "") -> str:
     folder = folder.resolve()
     if not folder.is_dir():
         return f"The search folder does not exist: {folder}"
-    terms = [term for term in re.findall(r"[a-z0-9_.-]{2,}", query) if term not in {"find", "file", "document", "the", "about", "that", "with"}]
+    terms = [term for term in re.findall(r"[a-z0-9_.-]{2,}", query) if term not in {"find", "file", "document", "the", "about", "that", "with", "my", "a", "an", "in", "on", "for", "project", "folder"}]
     if not terms:
         terms = [query]
     results = []
@@ -70,6 +70,16 @@ def search_local_files(query: str, root: str = "") -> str:
             relative = path.relative_to(folder).as_posix()
             haystack = name.casefold()
             score = sum(3 for term in terms if term in haystack)
+            # Exact and near-exact filenames outrank incidental content matches.
+            normalized_name = re.sub(r"[^a-z0-9]+", " ", path.stem.casefold()).strip()
+            normalized_terms = " ".join(terms).replace(".", " ").replace("_", " ").replace("-", " ")
+            normalized_terms = " ".join(normalized_terms.split())
+            if normalized_name == normalized_terms:
+                score += 1000
+            elif normalized_terms and normalized_name.startswith(normalized_terms):
+                score += 250
+            elif normalized_terms and normalized_terms in normalized_name:
+                score += 150
             if path.suffix.casefold() in TEXT_EXTENSIONS:
                 try:
                     if path.stat().st_size <= 500_000:
