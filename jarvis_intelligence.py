@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import ctypes
+from ctypes import wintypes
 import base64
 import io
 import json
@@ -258,7 +259,7 @@ def capture_screen_data_url(window_only: bool = False):
             try:
                 user32 = ctypes.windll.user32
                 hwnd = user32.GetForegroundWindow()
-                rect = ctypes.wintypes.RECT()
+                rect = wintypes.RECT()
                 if hwnd and user32.GetWindowRect(hwnd, ctypes.byref(rect)):
                     left, top, right, bottom = rect.left, rect.top, rect.right, rect.bottom
                     if right > left and bottom > top:
