@@ -25,7 +25,7 @@ import speech_recognition as sr
 
 from jarvis_wakeword import WakeWordListener, get_input_device
 
-from PySide6.QtCore import QObject, QUrl, Signal, Slot, Qt
+from PySide6.QtCore import QObject, QUrl, Signal, Slot, Qt, QTimer
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
@@ -39,6 +39,7 @@ from jarvis_ai import create_provider
 from jarvis_local import OllamaProvider
 from jarvis_plugins import load_plugins
 from jarvis_desktop import skills_context, load_skills, replace_skills
+from jarvis_features import due_reminders
 
 
 ROOT = Path(__file__).resolve().parent
@@ -1180,6 +1181,11 @@ class JarvisApp(QObject):
         self.tray.activated.connect(self.on_tray_activated)
         self.tray.show()
 
+        self.reminder_timer = QTimer(self)
+        self.reminder_timer.setInterval(15000)
+        self.reminder_timer.timeout.connect(self.check_due_reminders)
+        self.reminder_timer.start()
+
         self.register_hotkey()
         self.set_status("Ready")
         self.start_wake_listener()
@@ -1501,6 +1507,16 @@ class JarvisApp(QObject):
                 self.stop_event.set()
             if not self.busy:
                 self.start_wake_listener()
+
+    @Slot()
+    def check_due_reminders(self):
+        try:
+            for reminder in due_reminders():
+                title = str(reminder.get("title", "Reminder"))[:180]
+                self.tray.showMessage("J.A.R.V.I.S. Reminder", title, QSystemTrayIcon.MessageIcon.Information, 10000)
+                log(f"Reminder delivered: {title}")
+        except Exception as err:
+            log(f"Reminder check failed: {err}")
 
     @Slot()
     def open_memory(self):
