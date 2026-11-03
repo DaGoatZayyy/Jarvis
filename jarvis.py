@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
-from jarvis_intelligence import (TOOL_DEFINITIONS, execute_tool, load_history, save_history, recall_memory, capture_screen_data_url, load_memory, save_memory, detect_common_windows_command)
+from jarvis_intelligence import (TOOL_DEFINITIONS, execute_tool, load_history, save_history, recall_memory, capture_screen_data_url, load_memory, save_memory, detect_common_windows_command, detect_spoken_script_command)
 from jarvis_ai import create_provider
 from jarvis_local import OllamaProvider
 from jarvis_plugins import load_plugins
@@ -384,6 +384,19 @@ def think(cfg: dict, user_text: str) -> str:
                         {"role": "user", "content": user_text}]
 
     # Exact common app commands are handled locally, not left to probabilistic tool selection.
+    script_command = detect_spoken_script_command(user_text)
+    if script_command:
+        tool_name, arguments = script_command
+        result = arguments["message"] if tool_name == "__reply__" else execute_tool(tool_name, arguments)
+        log(f"Direct script command: {tool_name} {arguments} -> {result}")
+        reply = str(result)
+        with _history_lock:
+            _history.extend([{"role": "user", "content": user_text},
+                             {"role": "assistant", "content": reply}])
+            del _history[:-80]
+            save_history(_history)
+        return reply
+
     direct_command = detect_common_windows_command(user_text)
     if direct_command:
         tool_name, arguments = direct_command
