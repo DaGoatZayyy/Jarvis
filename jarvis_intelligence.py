@@ -12,6 +12,7 @@ import subprocess
 import time
 import urllib.parse
 import urllib.request
+import webbrowser
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -193,6 +194,34 @@ class _SearchParser(HTMLParser):
                 self.results.append(self._active)
             self._capture = False
             self._active = None
+
+
+def open_website(address: str):
+    """Open a validated HTTP(S) website in the user's default browser."""
+    raw = str(address or "").strip().strip('"').strip("'").rstrip(".,!?")
+    if not raw or len(raw) > 2048 or any(ch.isspace() for ch in raw):
+        return "Please provide a valid website address, such as gmail.com."
+
+    candidate = raw if "://" in raw else "https://" + raw
+    try:
+        parsed = urllib.parse.urlsplit(candidate)
+        host = parsed.hostname or ""
+        if (
+            parsed.scheme not in ("http", "https")
+            or not host
+            or "." not in host
+            or parsed.username is not None
+            or parsed.password is not None
+            or any(ch in host for ch in ("\\", "%", "<", ">", '"', "'"))
+        ):
+            return "That doesn't look like a valid website address. Try a domain such as gmail.com."
+        # Accessing .port validates malformed port values.
+        _ = parsed.port
+        if not webbrowser.open(candidate, new=2):
+            return f"Windows could not open {candidate} in the default browser."
+        return f"Opened {host} in your default browser."
+    except (ValueError, OSError) as exc:
+        return f"Could not open that website: {exc}"
 
 
 def web_search(query: str):
@@ -499,6 +528,12 @@ def detect_common_windows_command(user_text: str):
         query = match.group(1).strip()
         if query and query not in {"a file", "a folder"}:
             return ("discover_apps", {"query": query})
+    # Explicit website requests are routed to the default browser before app discovery.
+    match = re.match(r"^(?:please )?(?:open|go to|visit|browse to) (?:the website )?(.+)$", text)
+    if match:
+        target = match.group(1).strip().strip('"').strip("'").rstrip(".,!?")
+        if re.match(r"^(?:https?://)?(?:[a-z0-9-]+\\.)+[a-z]{2,}(?::\\d{1,5})?(?:/[^\\s]*)?$", target, re.I):
+            return ("open_website", {"address": target})
     match = re.match(r"^(?:please )?(?:open|launch|start) (.+)$", text)
     if match and match.group(1) not in {"file explorer", "explorer", "task manager", "settings", "notepad", "calculator", "calc", "paint", "terminal"}:
         return ("launch_discovered_app", {"app_name": match.group(1)})
@@ -527,6 +562,7 @@ TOOL_DEFINITIONS = [
     {"type": "function", "function": {"name": "recall_memory", "description": "Read the user's saved JARVIS memory when relevant or requested.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "forget_memory", "description": "Remove saved memory entries matching the user's explicit request.", "parameters": {"type": "object", "properties": {"fact": {"type": "string"}}, "required": ["fact"]}}},
     {"type": "function", "function": {"name": "web_search", "description": "Search the web for current information and return a few result titles and links.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
+    {"type": "function", "function": {"name": "open_website", "description": "Open a user-requested website in the computer's default browser. Accepts a domain or HTTP(S) URL.", "parameters": {"type": "object", "properties": {"address": {"type": "string"}}, "required": ["address"]}}},
     {"type": "function", "function": {"name": "windows_action", "description": "Perform one standard Windows desktop action from a fixed safe allowlist.", "parameters": {"type": "object", "properties": {"action": {"type": "string", "enum": ["open_file_explorer", "open_task_manager", "open_settings", "show_desktop", "volume_up", "volume_down", "volume_mute", "lock_workstation"]}}, "required": ["action"]}}},
     {"type": "function", "function": {"name": "close_app", "description": "Close a running app from the approved application list only.", "parameters": {"type": "object", "properties": {"app_name": {"type": "string", "enum": list(CLOSE_APP_ALLOWLIST)}}, "required": ["app_name"]}}},
     {"type": "function", "function": {"name": "create_project_item", "description": "Create a new file or folder inside the configured project directory without overwriting existing files.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}, "item_type": {"type": "string", "enum": ["file", "folder"]}, "content": {"type": "string"}}, "required": ["relative_path", "item_type"]}}},
@@ -563,6 +599,8 @@ def execute_tool(name: str, arguments: dict):
         return forget_memory(arguments.get("fact", ""))
     if name == "web_search":
         return web_search(arguments.get("query", ""))
+    if name == "open_website":
+        return open_website(arguments.get("address", ""))
     if name == "windows_action":
         return windows_action(arguments.get("action", ""))
     if name == "close_app":
