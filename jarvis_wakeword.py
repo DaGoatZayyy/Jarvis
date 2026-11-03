@@ -6,6 +6,8 @@ microphone audio; normal command transcription follows the existing app flow.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 import queue
 import threading
 import time
@@ -16,7 +18,29 @@ import sounddevice as sd
 
 
 def get_input_device() -> int:
-    """Return an available input device, preferring the Windows/PortAudio default."""
+    """Return the configured microphone by name, falling back to the system default."""
+    # Read the saved device name from the adjacent .env file. Matching by name is
+    # more resilient than persisting a PortAudio index, which can change on refresh.
+    configured_name = ""
+    env_path = Path(__file__).resolve().parent / ".env"
+    try:
+        for raw in env_path.read_text(encoding="utf-8-sig").splitlines():
+            line = raw.strip()
+            if line.startswith("JARVIS_INPUT_DEVICE="):
+                configured_name = line.split("=", 1)[1].strip().strip('"').strip("'")
+                break
+    except OSError:
+        pass
+
+    devices = sd.query_devices()
+    if configured_name:
+        for index, info in enumerate(devices):
+            if (
+                str(info.get("name", "")) == configured_name
+                and int(info.get("max_input_channels", 0)) > 0
+            ):
+                return index
+
     default_devices = sd.default.device
     if default_devices is not None:
         try:
@@ -28,7 +52,6 @@ def get_input_device() -> int:
         except (IndexError, TypeError, ValueError, sd.PortAudioError):
             pass
 
-    devices = sd.query_devices()
     for index, info in enumerate(devices):
         if int(info.get("max_input_channels", 0)) > 0:
             return index
