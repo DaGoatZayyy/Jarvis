@@ -16,6 +16,10 @@ import threading
 import time
 import urllib.error
 import urllib.request
+try:
+    import winreg
+except ImportError:
+    winreg = None
 from pathlib import Path
 
 import keyboard
@@ -68,6 +72,7 @@ DEFAULTS = {
     "JARVIS_VOICE_SPEED": "1.0",
     "JARVIS_PROJECT_DIR": "",
     "JARVIS_NO_CONFIRMS": "0",
+    "JARVIS_START_WITH_WINDOWS": "0",
 }
 
 SAMPLE_RATE = 16000
@@ -134,6 +139,27 @@ def save_settings(updates: dict):
         "\n".join(lines) + "\n",
         encoding="utf-8"
     )
+
+
+def apply_windows_startup(enabled: bool):
+    """Register or remove the per-user Windows sign-in launch entry."""
+    if winreg is None:
+        raise OSError("Windows startup integration is available only on Windows.")
+    run_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, run_key, 0, winreg.KEY_SET_VALUE) as key:
+        if enabled:
+            executable = Path(sys.executable)
+            if executable.name.casefold() == "python.exe":
+                candidate = executable.with_name("pythonw.exe")
+                if candidate.is_file():
+                    executable = candidate
+            command = f'"{executable}" "{ROOT / "jarvis.py"}"'
+            winreg.SetValueEx(key, "JARVIS", 0, winreg.REG_SZ, command)
+        else:
+            try:
+                winreg.DeleteValue(key, "JARVIS")
+            except FileNotFoundError:
+                pass
 
 
 class AssistantError(Exception):
@@ -801,6 +827,8 @@ class SettingsDialog(QDialog):
 
         self.fields = {}
         self.no_confirms = QCheckBox("No Confirms — skip routine action confirmations")
+        self.start_with_windows = QCheckBox("Start JARVIS when I sign in to Windows")
+        self.start_with_windows.setChecked(str(settings.get("JARVIS_START_WITH_WINDOWS", "0")).strip().casefold() in ("1", "true", "yes", "on"))
         self.no_confirms.setChecked(str(settings.get("JARVIS_NO_CONFIRMS", "0")).strip().casefold() in ("1", "true", "yes", "on"))
         self.existing_secrets = {
             "OPENROUTER_API_KEY": settings.get("OPENROUTER_API_KEY", ""),
@@ -854,6 +882,7 @@ class SettingsDialog(QDialog):
 
         layout.addLayout(form)
         layout.addWidget(self.no_confirms)
+        layout.addWidget(self.start_with_windows)
 
         note = QLabel(
             "No Confirms skips ordinary confirmation prompts only. File deletion still requires the exact confirmation phrase, and dangerous commands remain blocked or protected. "
@@ -945,6 +974,7 @@ class SettingsDialog(QDialog):
             for key, field in self.fields.items()
         }
         values["JARVIS_NO_CONFIRMS"] = "1" if self.no_confirms.isChecked() else "0"
+        values["JARVIS_START_WITH_WINDOWS"] = "1" if self.start_with_windows.isChecked() else "0"
         values["JARVIS_INPUT_DEVICE"] = str(self.microphone.currentData() or "")
         for key, old_value in self.existing_secrets.items():
             if not values.get(key):
@@ -1617,6 +1647,11 @@ class JarvisApp(QObject):
             updates = dialog.values()
 
             save_settings(updates)
+            try:
+                apply_windows_startup(updates.get("JARVIS_START_WITH_WINDOWS") == "1")
+            except OSError as err:
+                self.show_error(f"Settings saved, but Windows startup could not be updated: {err}")
+                log(f"Windows startup setting failed: {err}")
 
             self.settings = load_settings()
             self.local_ai_action.setChecked(
