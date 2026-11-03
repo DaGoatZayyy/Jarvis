@@ -430,36 +430,6 @@ def think(cfg: dict, user_text: str) -> str:
         })
         request_messages.append({"role": "user", "content": user_text})
 
-    screen_request = any(term in lower_request for term in (
-        "what's currently on my screen", "what is currently on my screen",
-        "what's on my screen", "what is on my screen", "describe the active window",
-        "inspect the active window", "capture the active window", "what's in this window",
-        "what is in this window", "look at my screen", "analyze my screen",
-    ))
-    if screen_request:
-        try:
-            screenshot = capture_screen_data_url(
-                window_only=any(term in lower_request for term in ("active window", "this window", "current window"))
-            )
-        except Exception as exc:
-            log(f"Screen capture failed: {type(exc).__name__}: {exc}")
-            return "I couldn't capture the screen. Check Windows screen permissions and the JARVIS log for the capture error."
-        if provider_name == "ollama":
-            vision_model = any(tag in candidates[0].casefold() for tag in (
-                "llava", "vision", "qwen2.5vl", "qwen3-vl", "minicpm-v", "gemma3", "moondream"
-            ))
-            if not vision_model:
-                return "Screen capture succeeded, but the selected Ollama model is text-only. Switch to a vision-capable local model or select OpenRouter with a vision model to analyze it."
-        request_messages[-1] = {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": user_text},
-                {"type": "image_url", "image_url": {"url": screenshot}},
-            ],
-        }
-        log("Screen capture attached to vision request.")
-
-
     # Exact common app commands are handled locally, not left to probabilistic tool selection.
     script_command = detect_spoken_script_command(user_text)
     if script_command:
@@ -498,6 +468,37 @@ def think(cfg: dict, user_text: str) -> str:
         candidates = route_models(cfg, user_text)
         log("AI provider locked for this request: OpenRouter")
         log("Model route: " + " -> ".join(candidates))
+
+    screen_request = any(term in lower_request for term in (
+        "what's currently on my screen", "what is currently on my screen",
+        "what's on my screen", "what is on my screen", "describe the active window",
+        "inspect the active window", "capture the active window", "what's in this window",
+        "what is in this window", "look at my screen", "analyze my screen",
+    ))
+    if screen_request:
+        try:
+            screenshot = capture_screen_data_url(
+                window_only=any(term in lower_request for term in ("active window", "this window", "current window"))
+            )
+        except Exception as exc:
+            log(f"Screen capture failed: {type(exc).__name__}: {exc}")
+            return "I couldn't capture the screen. Check Windows screen permissions and the JARVIS log for the capture error."
+        if provider_name == "ollama":
+            vision_model = any(tag in candidates[0].casefold() for tag in (
+                "llava", "vision", "qwen2.5vl", "qwen3-vl", "minicpm-v", "gemma3", "moondream"
+            ))
+            if not vision_model:
+                return "Screen capture succeeded, but the selected Ollama model is text-only. Switch to a vision-capable local model or select OpenRouter with a vision model to analyze it."
+        request_messages[-1] = {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": user_text},
+                {"type": "image_url", "image_url": {"url": screenshot}},
+            ],
+        }
+        log("Screen capture attached to vision request.")
+
+
 
     for _ in range(4):
         payload = {
