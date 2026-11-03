@@ -94,6 +94,7 @@ These features are implemented in the project but have not been fully tested acr
 - Project-aware coding assistance, including reading and editing project files.
 - Python plugin loading and third-party plugin tools.
 - On-demand screen capture and AI screen analysis.
+- Default-browser website opening from commands such as “Open gmail.com” (implemented; awaiting broader Windows testing).
 - Hands-free follow-up conversation mode.
 - Advanced model routing and automatic OpenRouter fallback behavior.
 - Optional NVIDIA GPU telemetry and less common Windows automation actions.
@@ -104,6 +105,7 @@ These features are implemented in the project but have not been fully tested acr
 - **Wake word:** Say “Hey Jarvis,” pause briefly, and then say your request.
 - **App search:** Say “Find Spotify.” Search reports matches and does not launch the app.
 - **Open or close an app:** Say “Open Spotify” or “Close Spotify.”
+- **Open a website:** Say “Open gmail.com” or “Go to youtube.com” to open it in your default browser.
 - **Run a project script:** Say “Run script test.py,” review the resolved filename, then say the exact confirmation, for example `confirm run script test.py`.
 
 Python scripts can make changes to your computer. The confirmation is always required, even if **No Confirms** is enabled. Script execution is limited to an existing `.py` file inside the configured project folder.
