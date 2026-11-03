@@ -532,7 +532,7 @@ def detect_common_windows_command(user_text: str):
     match = re.match(r"^(?:please )?(?:open|go to|visit|browse to) (?:the website )?(.+)$", text)
     if match:
         target = match.group(1).strip().strip('"').strip("'").rstrip(".,!?")
-        if re.match(r"^(?:https?://)?(?:[a-z0-9-]+\\.)+[a-z]{2,}(?::\\d{1,5})?(?:/[^\\s]*)?$", target, re.I):
+        if re.match(r"^(?:https?://)?(?:[a-z0-9-]+[.])+[a-z]{2,}(?::[0-9]{1,5})?(?:/[^ ]*)?$", target, re.I):
             return ("open_website", {"address": target})
     match = re.match(r"^(?:please )?(?:open|launch|start) (.+)$", text)
     if match and match.group(1) not in {"file explorer", "explorer", "task manager", "settings", "notepad", "calculator", "calc", "paint", "terminal"}:
