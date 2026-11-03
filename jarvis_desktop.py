@@ -151,12 +151,10 @@ def discover_apps(query: str, limit: int = 8):
 
     scored = []
     for item in entries:
-        name = item["name"]
-        normalized = name.casefold()
-        score = 1.0 if normalized == query else 0.92 if query in normalized else difflib.SequenceMatcher(None, query, normalized).ratio()
-        if score >= 0.42:
+        score = _app_name_match_score(query, item["name"])
+        if score >= 0.78:
             scored.append((score, item))
-    scored.sort(key=lambda pair: (-pair[0], pair[1]["name"].casefold()))
+    scored.sort(key=lambda pair: (-pair[0], pair[1]["name"].casefold(), pair[1]["source"]))
     matches = [item for _, item in scored[:max(1, min(int(limit), 12))]]
     if not matches:
         return f"I couldn't find an installed app matching '{query}'. Try its name as it appears in the Start Menu."
@@ -185,9 +183,8 @@ def _resolve_exact_app(query: str):
     entries.extend(_registry_apps())
     ranked = []
     for item in entries:
-        name = item["name"].casefold()
-        score = 1.0 if name == text else 0.94 if text in name else difflib.SequenceMatcher(None, text, name).ratio()
-        if score >= 0.58:
+        score = _app_name_match_score(text, item["name"])
+        if score >= 0.78:
             ranked.append((score, item))
     ranked.sort(key=lambda pair: -pair[0])
     if not ranked:
