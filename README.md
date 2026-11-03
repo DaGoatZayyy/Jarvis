@@ -151,10 +151,10 @@ Please never submit API keys, .env files, passwords, personal data, private logs
 
 Created by **DaGoatZayyy**.
 
-JARVIS is released under the **MIT License**. You may use, copy, modify, merge, publish, distribute, sublicense, and sell copies of the software, provided that the original copyright and license notice are included with copies or substantial portions of the software.
+JARVIS is released under the **GNU General Public License v3.0 (GPL-3.0-only)**. You may use, study, modify, and redistribute it, including commercially, subject to the GPL-3.0 terms. If you distribute a covered modified version, you must provide the corresponding source code under GPL-3.0, preserve required notices, and mark your changes. The license also contains requirements for distributing compiled or packaged versions.
 
-If you use or modify this project, please credit **DaGoatZayyy** and link back to the original repository:
+Please credit **DaGoatZayyy** and link back to the original repository when presenting or sharing your JARVIS-based project:
 
 https://github.com/DaGoatZayyy/Jarvis
 
-See [LICENSE](LICENSE) for the full license text.
+GPL-3.0 also requires appropriate copyright and license notices to be retained. See [LICENSE](LICENSE) for the complete license terms.
