@@ -44,13 +44,13 @@ JARVIS is a Windows desktop voice assistant that runs in the system tray. It let
    ollama pull qwen2.5:7b
    ```
 
-6. Start JARVIS:
+6. Start JARVIS by double-clicking the single launcher:
 
-   ```powershell
-   .\run.bat
+   ```text
+   run.bat
    ```
 
-   JARVIS should appear in the Windows system tray. The batch launcher uses `pythonw` so a terminal window does not remain open. For troubleshooting, run `py jarvis.py` from PowerShell.
+   JARVIS starts in the Windows system tray without leaving a terminal window open. The launcher uses `pyw` or `pythonw`. A separate `run.vbs` file is not needed. For troubleshooting, run `py jarvis.py` from PowerShell.
 
 ## Updating JARVIS
 
@@ -62,7 +62,7 @@ git pull
 py -m pip install -r requirements.txt
 ```
 
-Then restart JARVIS. Your local `.env`, conversation history, memory, and other local data should remain in place because they are not tracked by Git.
+Then restart JARVIS using `run.bat`. Your local `.env`, conversation history, memory, and other local data should remain in place because they are not tracked by Git.
 
 If you installed from a ZIP, download the latest ZIP and replace the application files. Keep your existing `.env` and any local JSON data files; do not overwrite them with repository templates. If dependencies changed, run:
 
