@@ -12,6 +12,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -369,6 +370,21 @@ def run_diagnostic(command_id: str):
         return f"{key} failed: {exc}"
 
 
+def _python_console_executable() -> str:
+    """Find the console interpreter paired with the current JARVIS Python."""
+    configured = os.environ.get("PYTHON", "").strip()
+    if configured:
+        return configured
+    current = Path(sys.executable)
+    if current.name.casefold() in {"pythonw.exe", "pythonw"}:
+        console_python = current.with_name("python.exe")
+        if console_python.is_file():
+            return str(console_python)
+    if current.name.casefold() in {"python.exe", "python"} and current.is_file():
+        return str(current)
+    return "py"
+
+
 def run_project_python(relative_path: str, arguments: str = ""):
     """Run an explicitly requested .py file inside the selected project, with a hidden window."""
     try:
@@ -383,7 +399,7 @@ def run_project_python(relative_path: str, arguments: str = ""):
         args = shlex.split(str(arguments), posix=False)
         if len(args) > 12 or any(len(arg) > 120 for arg in args):
             return "Too many or overly long script arguments."
-        command = [os.environ.get("PYTHON", "py"), "-E", "-s", str(script), *args]
+        command = [_python_console_executable(), "-E", "-s", str(script), *args]
         result = subprocess.run(command, cwd=str(root), capture_output=True, text=True,
                                 timeout=45, check=False, shell=False,
                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
