@@ -363,11 +363,14 @@ def resolve_spoken_python_path(spoken_path: str):
     raw = str(spoken_path or "").strip().strip('"“”‘’').strip()
     if not raw:
         return None
+
+    # Common speech-to-text variants: "test dot py", "testa py", "test ty".
     value = raw.casefold().replace("\\", "/")
-    value = re.sub(r"\b(dot|period|point)\b", ".", value)
-    value = re.sub(r"\b(p\s*y|pee\s*why|p why)\b", ".py", value)
-    value = re.sub(r"\b(ty|tie)\b$", ".py", value)
+    value = re.sub(r"\s*\b(dot|period|point)\b\s*", ".", value)
+    value = re.sub(r"\s*(?:p\s*y|pee\s*why|p why|py)\s*$", ".py", value)
+    value = re.sub(r"\s*(?:ty|tie)\s*$", ".py", value)
     value = re.sub(r"\s+", "", value)
+    value = re.sub(r"\.{2,}py$", ".py", value)
     if not value.endswith(".py"):
         value += ".py"
 
