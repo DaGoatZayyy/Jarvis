@@ -20,7 +20,7 @@ import psutil
 import mss
 from PIL import Image
 from jarvis_plugins import execute_plugin, plugin_tools
-from jarvis_desktop import (discover_apps, launch_discovered_app, close_discovered_app, run_project_python, resolve_spoken_python_path, save_skill, forget_skill, load_skills)
+from jarvis_desktop import (discover_apps, launch_discovered_app, close_discovered_app, close_last_opened_app, run_project_python, resolve_spoken_python_path, save_skill, forget_skill, load_skills)
 from jarvis_features import search_local_files, read_clipboard_text, create_reminder, list_reminders, cancel_reminder
 
 ROOT = Path(__file__).resolve().parent
@@ -566,6 +566,8 @@ def detect_common_windows_command(user_text: str):
     if match:
         app = aliases.get(match.group(1), match.group(1))
         return ("windows_action", {"action": "open_task_manager"}) if app == "task manager" else (("windows_action", {"action": "open_file_explorer"}) if app == "file explorer" else (("windows_action", {"action": "open_settings"}) if app == "settings" else ("open_app", {"app_name": app})))
+    if re.match(r"^(?:please )?(?:close|quit|exit) (?:it|that|the last app(?: you opened)?|the app you just opened|the last opened app|the last opened you did)$", text):
+        return ("close_last_opened_app", {})
     match = re.match(r"^(?:please )?(?:close|quit|exit) (?:the )?(task manager|file explorer|explorer|notepad|calculator|calc|paint|terminal)$", text)
     if match:
         return ("close_app", {"app_name": aliases.get(match.group(1), match.group(1))})
@@ -578,6 +580,16 @@ def detect_common_windows_command(user_text: str):
     for action, pattern in actions.items():
         if re.match(pattern, text):
             return ("windows_action", {"action": action})
+    # Local file searches must be routed before the generic installed-app finder.
+    file_search = re.match(r"^(?:please )?(?:find|search for|look for|locate) (.+)$", text)
+    if file_search:
+        target = file_search.group(1).strip()
+        file_terms = ("file", "folder", "document", "readme", "config", "configuration",
+                      "python", "script", "project", "in the project", "in my files")
+        if any(term in target for term in file_terms):
+            query = re.sub(r"\\b(?:my|the|a|an|file|folder|document|in the project folder|in project folder|in my project folder)\\b", " ", target)
+            query = " ".join(query.split()).strip() or target
+            return ("search_local_files", {"query": query})
     # File/folder creation and diagnostics are also recognized deterministically.
     match = re.match(r"^(?:please )?(?:create|make) (?:a )?(file|folder) (?:named )?(.+)$", text)
     if match:
