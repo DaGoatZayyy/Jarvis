@@ -421,7 +421,7 @@ def think(cfg: dict, user_text: str) -> str:
     )
     if clipboard_request:
         clipboard_text = execute_tool("clipboard_assist", {})
-        log("Direct clipboard read: " + (str(clipboard_text)[:160].replace("\\n", " ") if clipboard_text else "empty"))
+        log("Direct clipboard read succeeded (" + str(len(str(clipboard_text))) + " characters)." if clipboard_text else "Direct clipboard read returned empty text.")
         if not clipboard_text or str(clipboard_text).startswith(("Clipboard reading is", "The clipboard", "Could not access")):
             return str(clipboard_text or "The clipboard is empty.")
         request_messages.append({
