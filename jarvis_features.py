@@ -21,6 +21,10 @@ def read_clipboard_text() -> str:
         return "Clipboard reading is supported on Windows only."
     user32 = ctypes.windll.user32
     kernel32 = ctypes.windll.kernel32
+    user32.GetClipboardData.restype = ctypes.c_void_p
+    kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalLock.restype = ctypes.c_void_p
+    kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
     if not user32.OpenClipboard(None):
         return "The clipboard is currently busy. Try again in a moment."
     handle = None
