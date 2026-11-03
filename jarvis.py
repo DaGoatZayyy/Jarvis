@@ -869,19 +869,41 @@ class SettingsDialog(QDialog):
             self.microphone.clear()
             self.microphone.addItem("System default microphone", "")
             found = 0
+            seen_names = set()
             for index, device in enumerate(devices):
                 if int(device.get("max_input_channels", 0)) <= 0:
                     continue
-                name = str(device.get("name", f"Input device {index}"))
-                host_api = ""
-                try:
-                    host_api_index = int(device.get("hostapi", -1))
-                    if host_api_index >= 0:
-                        host_api = str(sd.query_hostapis(host_api_index).get("name", ""))
-                except Exception:
-                    pass
-                label = f"{name} ({host_api})" if host_api else name
-                self.microphone.addItem(label, name)
+
+                # PortAudio exposes the same physical microphone through several
+                # host APIs (MME, DirectSound, WASAPI). Show one clean entry.
+                raw_name = str(device.get("name", f"Input device {index}")).strip()
+                normalized = raw_name.casefold()
+                if normalized in seen_names:
+                    continue
+                seen_names.add(normalized)
+
+                import re
+                clean_name = re.sub(r"^microphone\\s*\\((.+?)\\)$", r"\\1", raw_name, flags=re.I).strip()
+                clean_name = re.sub(r"\\s*\\((?:mm[e]?|directsound|wasapi|windows directsound|primary sound capture driver)\\)\\s*$", "", clean_name, flags=re.I).strip()
+                clean_name = re.sub(r"\\s+", " ", clean_name)
+
+                # Make common Windows device names readable without exposing
+                # low-level driver/API labels in the dropdown.
+                lower_name = clean_name.casefold()
+                if "voicemod" in lower_name:
+                    label = "VoiceMod Mic"
+                elif "realtek" in lower_name:
+                    label = "Realtek Mic"
+                elif "soundcore" in lower_name or "sound core" in lower_name:
+                    label = "Soundcore Mic"
+                elif "microphone array" in lower_name:
+                    label = "Microphone Array"
+                else:
+                    label = clean_name
+                    if not any(word in lower_name for word in ("mic", "microphone", "input")):
+                        label += " Mic"
+
+                self.microphone.addItem(label, raw_name)
                 found += 1
 
             selected_index = self.microphone.findData(selected)
