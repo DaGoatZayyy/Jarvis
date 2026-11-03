@@ -149,7 +149,7 @@ def system_prompt(cfg: dict) -> str:
     return (
         "You are J.A.R.V.I.S., a capable Windows desktop assistant. "
         f'Address the user as "{title}". '
-        "Speak naturally and concisely because responses are read aloud. "
+        "Speak naturally and concisely because responses are read aloud. Use recent conversation history to resolve follow-up references such as it, that, the previous file, or do it again; do not ask the user to repeat details already present in recent messages. "
         "DESKTOP ACTION RULES: When the user asks you to open, launch, start, close, quit, create, "
         "delete, inspect, or otherwise operate something on this PC, use the matching tool. "
         "Do not merely explain how to do it when an available tool can perform it. "
@@ -526,6 +526,21 @@ def think(cfg: dict, user_text: str) -> str:
                         execute_tool(name, arguments) if explicit_edit
                         else "File writing was blocked because the user has not explicitly requested a code edit."
                     )
+                elif name == "clipboard_assist":
+                    requested = any(term in user_text.casefold() for term in ("clipboard", "copied text", "what i copied", "text i copied"))
+                    tool_result = execute_tool(name, arguments) if requested else "Clipboard access was blocked because the user did not explicitly ask JARVIS to use clipboard content."
+                elif name == "search_local_files":
+                    requested = any(term in user_text.casefold() for term in ("find a file", "find the file", "search for a file", "look for a file", "find a document", "search my files", "locate the file", "look for the document"))
+                    tool_result = execute_tool(name, arguments) if requested else "Local file search was blocked because the user did not explicitly ask to search files."
+                elif name == "create_reminder":
+                    requested = any(term in user_text.casefold() for term in ("remind me", "set a reminder", "create a reminder", "schedule a reminder"))
+                    tool_result = execute_tool(name, arguments) if requested else "Reminder creation requires an explicit request from the user."
+                elif name == "cancel_reminder":
+                    requested = any(term in user_text.casefold() for term in ("cancel reminder", "delete reminder", "remove reminder"))
+                    tool_result = execute_tool(name, arguments) if requested else "Reminder cancellation requires an explicit request from the user."
+                elif name == "list_reminders":
+                    requested = any(term in user_text.casefold() for term in ("list reminders", "my reminders", "what reminders", "show reminders"))
+                    tool_result = execute_tool(name, arguments) if requested else "Reminder listing requires an explicit request from the user."
                 else:
                     tool_result = execute_tool(name, arguments)
                 request_messages.append({
