@@ -123,6 +123,48 @@ def _registry_apps():
     return results
 
 
+def _normalize_app_name(value: str) -> str:
+    """Normalize app names for reliable exact, token and fuzzy matching."""
+    return " ".join(re.findall(r"[a-z0-9]+", str(value).casefold()))
+
+
+def _app_name_match_score(query: str, app_name: str) -> float:
+    """Score meaningful app-name matches while rejecting weak substring/fuzzy collisions."""
+    normalized_query = _normalize_app_name(query)
+    normalized_name = _normalize_app_name(app_name)
+    if not normalized_query or not normalized_name:
+        return 0.0
+    if normalized_name == normalized_query:
+        return 1.0
+
+    query_tokens = normalized_query.split()
+    name_tokens = normalized_name.split()
+    token_scores = []
+    for query_token in query_tokens:
+        best = 0.0
+        for name_token in name_tokens:
+            if query_token == name_token:
+                best = 1.0
+            elif len(query_token) >= 3 and name_token.startswith(query_token):
+                best = max(best, 0.94)
+            elif len(query_token) >= 4:
+                best = max(best, difflib.SequenceMatcher(None, query_token, name_token).ratio())
+        token_scores.append(best)
+    if token_scores and all(score >= 0.78 for score in token_scores):
+        return sum(token_scores) / len(token_scores)
+
+    # Only accept close spellings for single-word searches; never use weak whole-name similarity.
+    if len(query_tokens) == 1 and len(normalized_query) >= 4:
+        best = max(
+            (difflib.SequenceMatcher(None, normalized_query, token).ratio()
+             for token in name_tokens),
+            default=0.0,
+        )
+        if best >= 0.82:
+            return best
+    return 0.0
+
+
 def discover_apps(query: str, limit: int = 8):
     """Find matching installed apps and Start Menu shortcuts without launching them."""
     query = " ".join(str(query).casefold().split())
