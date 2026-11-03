@@ -21,6 +21,7 @@ import mss
 from PIL import Image
 from jarvis_plugins import execute_plugin, plugin_tools
 from jarvis_desktop import (discover_apps, launch_discovered_app, close_discovered_app, run_project_python, resolve_spoken_python_path, save_skill, forget_skill, load_skills)
+from jarvis_features import search_local_files, read_clipboard_text, create_reminder, list_reminders, cancel_reminder
 
 ROOT = Path(__file__).resolve().parent
 HISTORY_FILE = ROOT / "jarvis_history.json"
@@ -627,6 +628,11 @@ TOOL_DEFINITIONS = [
     {"type": "function", "function": {"name": "list_project_files", "description": "List files in the configured coding project directory, excluding dependency and version-control folders.", "parameters": {"type": "object", "properties": {"subdirectory": {"type": "string"}}, "required": []}}},
     {"type": "function", "function": {"name": "read_project_file", "description": "Read a text file from the configured coding project directory for code analysis.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}}, "required": ["relative_path"]}}},
     {"type": "function", "function": {"name": "write_project_file", "description": "Edit a project text file only when the user explicitly requested a code edit. Always preserve a backup. Never use for secrets.", "parameters": {"type": "object", "properties": {"relative_path": {"type": "string"}, "content": {"type": "string"}}, "required": ["relative_path", "content"]}}},
+    {"type": "function", "function": {"name": "search_local_files", "description": "Search filenames and readable document contents in the configured JARVIS project folder when the user asks to find a local file or document.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
+    {"type": "function", "function": {"name": "clipboard_assist", "description": "Read plain text currently on the Windows clipboard so you can summarize, explain, rewrite, or transform it. Use only when the user explicitly asks you to work with their clipboard. Do not change the clipboard.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {"name": "create_reminder", "description": "Create a local reminder. Convert the requested time to ISO 8601 including the user's local timezone offset. Repeat must be none, daily, or weekly.", "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "due_at": {"type": "string"}, "repeat": {"type": "string", "enum": ["none", "daily", "weekly"]}}, "required": ["title", "due_at"]}}},
+    {"type": "function", "function": {"name": "list_reminders", "description": "List pending local reminders when the user asks what reminders they have.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {"name": "cancel_reminder", "description": "Cancel a pending local reminder by its ID after the user asks to cancel it.", "parameters": {"type": "object", "properties": {"reminder_id": {"type": "string"}}, "required": ["reminder_id"]}}},
     *plugin_tools(),
 ]
 
@@ -681,4 +687,14 @@ def execute_tool(name: str, arguments: dict):
         return read_project_file(arguments.get("relative_path", ""))
     if name == "write_project_file":
         return write_project_file(arguments.get("relative_path", ""), arguments.get("content", ""))
+    if name == "search_local_files":
+        return search_local_files(arguments.get("query", ""))
+    if name == "clipboard_assist":
+        return read_clipboard_text()
+    if name == "create_reminder":
+        return create_reminder(arguments.get("title", ""), arguments.get("due_at", ""), arguments.get("repeat", "none"))
+    if name == "list_reminders":
+        return list_reminders()
+    if name == "cancel_reminder":
+        return cancel_reminder(arguments.get("reminder_id", ""))
     return execute_plugin(name, arguments) or "Tool not available."
