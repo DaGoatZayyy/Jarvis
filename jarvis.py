@@ -883,9 +883,9 @@ class SettingsDialog(QDialog):
                 seen_names.add(normalized)
 
                 import re
-                clean_name = re.sub(r"^microphone\\s*\\((.+?)\\)$", r"\\1", raw_name, flags=re.I).strip()
+                clean_name = re.sub(r"^microphone\s*\((.+?)\)$", r"\1", raw_name, flags=re.I).strip()
                 clean_name = re.sub(r"\\s*\\((?:mm[e]?|directsound|wasapi|windows directsound|primary sound capture driver)\\)\\s*$", "", clean_name, flags=re.I).strip()
-                clean_name = re.sub(r"\\s+", " ", clean_name)
+                clean_name = re.sub(r"\s+", " ", clean_name)
 
                 # Make common Windows device names readable without exposing
                 # low-level driver/API labels in the dropdown.
