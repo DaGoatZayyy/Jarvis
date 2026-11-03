@@ -160,10 +160,12 @@ def discover_apps(query: str, limit: int = 8):
     matches = [item for _, item in scored[:max(1, min(int(limit), 12))]]
     if not matches:
         return f"I couldn't find an installed app matching '{query}'. Try its name as it appears in the Start Menu."
-    return "App discovery results (not launched):\n" + "\n".join(
+    header = f"Found {len(matches)} matching installed application entry/entries for '{query}':"
+    details = "\n".join(
         f"{i+1}. {item['name']} — {item['source']} — {item['target']}"
         for i, item in enumerate(matches)
     )
+    return header + "\n" + details + "\nNo application was launched."
 
 
 def _resolve_exact_app(query: str):
@@ -354,6 +356,53 @@ def run_project_python(relative_path: str, arguments: str = ""):
         return "Python script stopped because it exceeded the 45-second time limit."
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return f"Could not run that Python script: {exc}"
+
+
+def resolve_spoken_python_path(spoken_path: str):
+    """Resolve a spoken .py filename against real project files; return a unique relative path or None."""
+    raw = str(spoken_path or "").strip().strip('"“”‘’').strip()
+    if not raw:
+        return None
+    value = raw.casefold().replace("\\", "/")
+    value = re.sub(r"\b(dot|period|point)\b", ".", value)
+    value = re.sub(r"\b(p\s*y|pee\s*why|p why)\b", ".py", value)
+    value = re.sub(r"\b(ty|tie)\b$", ".py", value)
+    value = re.sub(r"\s+", "", value)
+    if not value.endswith(".py"):
+        value += ".py"
+
+    root = _project_root()
+    exact = (root / value).resolve()
+    if root in exact.parents and exact.is_file() and exact.suffix.casefold() == ".py":
+        return exact.relative_to(root).as_posix()
+
+    ignored = {".git", ".venv", "venv", "__pycache__", "site-packages", "node_modules"}
+    candidates = []
+    try:
+        for path in root.rglob("*.py"):
+            try:
+                relative = path.relative_to(root)
+                if any(part.casefold() in ignored for part in relative.parts):
+                    continue
+                candidates.append((relative.as_posix(), path.stem.casefold()))
+            except (OSError, ValueError):
+                continue
+    except OSError:
+        return None
+
+    requested_stem = Path(value).stem.casefold()
+    if not requested_stem:
+        return None
+    ranked = sorted(
+        ((difflib.SequenceMatcher(None, requested_stem, stem).ratio(), rel)
+         for rel, stem in candidates),
+        reverse=True,
+    )
+    if not ranked or ranked[0][0] < 0.80:
+        return None
+    if len(ranked) > 1 and ranked[1][0] >= ranked[0][0] - 0.06:
+        return None
+    return ranked[0][1]
 
 
 def command_is_blocked(command: str):
