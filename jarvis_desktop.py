@@ -318,6 +318,18 @@ def _visible_windows():
     return results
 
 
+def close_last_opened_app():
+    """Close the most recently launched app tracked by JARVIS."""
+    sessions = _load_sessions()
+    if not sessions:
+        return "I don't have a recently launched app recorded. Tell me its name."
+    latest = max(sessions.values(), key=lambda item: float(item.get("started", 0) or 0))
+    name = str(latest.get("name", "")).strip()
+    if not name:
+        return "I couldn't identify the last app JARVIS launched. Tell me its name."
+    return close_discovered_app(name)
+
+
 def close_discovered_app(app_name: str):
     """Send WM_CLOSE to matching app windows; never force-kill an arbitrary process."""
     if os.name != "nt":
