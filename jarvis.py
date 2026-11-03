@@ -202,7 +202,7 @@ def system_prompt(cfg: dict) -> str:
         "For ordinary questions, answer directly without unnecessary tools. "
         "Never claim to have opened, closed, created, deleted, run, or changed anything without a successful tool result. "
         "Avoid markdown, lists, emojis, URLs and code unless requested. "
-        f"The local date and time is {time.strftime('%A, %B %d, %Y, %I:%M %p')}."
+        f"The local date and time is {time.strftime('%A, %B %d, %Y, %I:%M %p %Z %z')}."
     )
 
 MODEL_CATALOG = {
@@ -499,8 +499,8 @@ def think(cfg: dict, user_text: str) -> str:
                         arguments = {}
                 if name == "describe_screen":
                     explicit_screen_request = any(term in user_text.casefold() for term in (
-                        "screen", "screenshot", "display", "what's on my monitor",
-                        "what is on my monitor", "visible window",
+                        "screen", "screenshot", "display", "window", "what's on my monitor",
+                        "what is on my monitor", "what's open", "what is open",
                     ))
                     tool_result = (
                         execute_tool(name, arguments) if explicit_screen_request
@@ -575,7 +575,8 @@ def think(cfg: dict, user_text: str) -> str:
                     "content": str(tool_result)[:5000],
                 })
                 if name == "describe_screen" and explicit_screen_request:
-                    screen_data = capture_screen_data_url()
+                    window_only = bool(arguments.get("window_only", False)) or any(term in user_text.casefold() for term in ("this window", "active window", "current window"))
+                    screen_data = capture_screen_data_url(window_only=window_only)
                     request_messages.append({
                         "role": "user",
                         "content": [
