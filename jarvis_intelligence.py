@@ -250,10 +250,21 @@ def web_search(query: str):
     )
 
 
-def capture_screen_data_url():
-    """Capture the primary desktop only when the user explicitly asks about the screen."""
+def capture_screen_data_url(window_only: bool = False):
+    """Capture the primary desktop or foreground window after an explicit request."""
     with mss.mss() as capture:
         monitor = capture.monitors[1]
+        if window_only and os.name == "nt":
+            try:
+                user32 = ctypes.windll.user32
+                hwnd = user32.GetForegroundWindow()
+                rect = ctypes.wintypes.RECT()
+                if hwnd and user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                    left, top, right, bottom = rect.left, rect.top, rect.right, rect.bottom
+                    if right > left and bottom > top:
+                        monitor = {"left": left, "top": top, "width": right-left, "height": bottom-top}
+            except Exception:
+                pass
         shot = capture.grab(monitor)
         image = Image.frombytes("RGB", shot.size, shot.rgb)
         image.thumbnail((1600, 1000))
@@ -604,7 +615,7 @@ def detect_common_windows_command(user_text: str):
 
 
 TOOL_DEFINITIONS = [
-    {"type": "function", "function": {"name": "describe_screen", "description": "Capture and inspect the current primary screen. Use only when the user explicitly asks what is on their screen or asks for help with something visible.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {"name": "describe_screen", "description": "Capture and inspect the primary screen or active foreground window. Use only when the user explicitly asks about visible content. Set window_only true for the active window.", "parameters": {"type": "object", "properties": {"window_only": {"type": "boolean"}}, "required": []}}},
     {"type": "function", "function": {"name": "get_system_status", "description": "Read current CPU, memory, disk, battery, network totals and available NVIDIA GPU telemetry.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "list_running_apps", "description": "List running process names on this Windows computer.", "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {"name": "open_app", "description": "Open an application from the safe built-in allowlist only.", "parameters": {"type": "object", "properties": {"app_name": {"type": "string", "enum": list(APP_ALLOWLIST)}}, "required": ["app_name"]}}},
