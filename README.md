@@ -134,6 +134,19 @@ When Ollama is selected, chat requests go to the configured local Ollama server;
 - Conversation history, memory, skills, and activity logs may contain personal information. Review them before sharing diagnostic files.
 - The Python runner is restricted to the configured project folder and requires confirmation. Do not run scripts you do not understand.
 
+## Contributing
+
+Contributions from developers are welcome. You can use JARVIS as a starting point for your own assistant, improve the project, or propose features for the official version.
+
+Before making a substantial change, open an issue to discuss the idea. To contribute code, fork the repository, create a focused branch, make and test your changes, then submit a pull request. All pull requests are reviewed; submitting a change does not guarantee it will be merged.
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+- Report bugs with the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md).
+- Suggest improvements with the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md).
+- Follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+- Read [SECURITY.md](SECURITY.md) for responsible vulnerability reporting.
+
+Please never submit API keys, .env files, passwords, personal data, private logs, or screenshots containing sensitive information. Keep pull requests focused and include steps used to test the change.
 ## Credits and license
 
 Created by **DaGoatZayyy**.
