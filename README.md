@@ -93,17 +93,25 @@ These features are implemented in the project but have not been fully tested acr
 - Learned skills that save reusable written workflows.
 - Project-aware coding assistance, including reading and editing project files.
 - Python plugin loading and third-party plugin tools.
-- On-demand screen capture and AI screen analysis (screen capture is currently primary-display based).
+- On-demand screen capture and AI analysis of the primary display or active foreground window.
 - Default-browser website opening from commands such as “Open gmail.com” (implemented; awaiting broader Windows testing).
 - Hands-free follow-up conversation mode.
 - Advanced model routing and automatic OpenRouter fallback behavior.
-- Natural-language file search in the configured coding project folder.\n- Clipboard text assistance (read-only; only when explicitly requested).\n- Local one-time, daily, and weekly reminders with Windows tray notifications.\n- Windows sign-in startup toggle in Settings.\n- Optional NVIDIA GPU telemetry and less common Windows automation actions.
+- Natural-language file search in the configured coding project folder.
+- Clipboard text assistance (read-only; only when explicitly requested).
+- Local one-time, daily, and weekly reminders with Windows tray notifications.
+- Windows sign-in startup toggle in Settings.
+- Optional NVIDIA GPU telemetry and less common Windows automation actions.
 
 ## Basic usage
 
 - **Push-to-talk:** Hold `Ctrl+Shift+Space`, speak, then release.
 - **Wake word:** Say “Hey Jarvis,” pause briefly, and then say your request.
-- **App search:** Say “Find Spotify.” Search reports matches and does not launch the app.\n- **File search:** Ask JARVIS to find a file by its name or words in its contents in the configured project folder.\n- **Clipboard:** Ask JARVIS to summarize or explain the text currently copied. Clipboard content is read only when requested.\n- **Reminders:** Ask JARVIS to create a reminder, list reminders, or cancel one. One-time, daily, and weekly reminders are supported while JARVIS is running.\n- **Windows startup:** Enable or disable “Start JARVIS when I sign in to Windows” in Settings.
+- **App search:** Say “Find Spotify.” Search reports matches and does not launch the app.
+- **File search:** Ask JARVIS to find a file by its name or words in its contents in the configured project folder.
+- **Clipboard:** Ask JARVIS to summarize or explain the text currently copied. Clipboard content is read only when requested.
+- **Reminders:** Ask JARVIS to create a reminder, list reminders, or cancel one. One-time, daily, and weekly reminders are supported while JARVIS is running.
+- **Windows startup:** Enable or disable “Start JARVIS when I sign in to Windows” in Settings.
 - **Open or close an app:** Say “Open Spotify” or “Close Spotify.”
 - **Open a website:** Say “Open gmail.com” or “Go to youtube.com” to open it in your default browser.
 - **Run a project script:** Say “Run script test.py,” review the resolved filename, then say the exact confirmation, for example `confirm run script test.py`.
