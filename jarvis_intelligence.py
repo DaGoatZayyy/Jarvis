@@ -696,6 +696,8 @@ def execute_tool(name: str, arguments: dict):
         return launch_discovered_app(arguments.get("app_name", ""))
     if name == "close_discovered_app":
         return close_discovered_app(arguments.get("app_name", ""))
+    if name == "close_last_opened_app":
+        return close_last_opened_app()
     if name == "run_project_python":
         return run_project_python(arguments.get("relative_path", ""), arguments.get("arguments", ""))
     if name == "save_skill":
