@@ -136,12 +136,15 @@ When Ollama is selected, chat requests go to the configured local Ollama server;
 
 ## Credits and license
 
-Copyright (C) 2026 **DaGoatZayyy**.
+Copyright (c) 2026 **DaGoatZayyy**. All rights reserved.
 
-JARVIS is licensed under the **GNU General Public License v3.0 (GPL-3.0-only)**. You may use, modify, and redistribute it, including commercially, provided you follow the license. When distributing JARVIS or a modified version, you must keep the applicable copyright and license notices, mark your changes, and provide the corresponding source code under GPL-3.0.
+JARVIS is provided under the **JARVIS Base License, Version 1.0**. You may use, study, modify, and redistribute the project for free. You may also build and commercialize a genuine derivative project containing substantial original development.
 
-Please retain credit to **DaGoatZayyy** and the original project when redistributing this software:
+**Attribution is required.** If you redistribute JARVIS, a modified version, or a project containing a substantial portion of its code, you must credit the original project with:
 
-https://github.com/DaGoatZayyy/Jarvis
+> Based on JARVIS by DaGoatZayyy  
+> https://github.com/DaGoatZayyy/Jarvis
 
-See [LICENSE](LICENSE) for the complete terms.
+You may not sell or paywall the original JARVIS base by itself, or remove its attribution. This is a custom source-available license, not GPL-3.0 or an OSI-approved open-source license. Third-party dependencies retain their own licenses.
+
+See [LICENSE](LICENSE) for the full terms.
