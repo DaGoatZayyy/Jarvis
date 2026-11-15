@@ -134,27 +134,14 @@ When Ollama is selected, chat requests go to the configured local Ollama server;
 - Conversation history, memory, skills, and activity logs may contain personal information. Review them before sharing diagnostic files.
 - The Python runner is restricted to the configured project folder and requires confirmation. Do not run scripts you do not understand.
 
-## Contributing
-
-Contributions from developers are welcome. You can use JARVIS as a starting point for your own assistant, improve the project, or propose features for the official version.
-
-Before making a substantial change, open an issue to discuss the idea. To contribute code, fork the repository, create a focused branch, make and test your changes, then submit a pull request. All pull requests are reviewed; submitting a change does not guarantee it will be merged.
-
-- Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
-- Report bugs with the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md).
-- Suggest improvements with the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md).
-- Follow the [Code of Conduct](CODE_OF_CONDUCT.md).
-- Read [SECURITY.md](SECURITY.md) for responsible vulnerability reporting.
-
-Please never submit API keys, .env files, passwords, personal data, private logs, or screenshots containing sensitive information. Keep pull requests focused and include steps used to test the change.
 ## Credits and license
 
-Created by **DaGoatZayyy**.
+Copyright (C) 2026 **DaGoatZayyy**.
 
-JARVIS is released under the **GNU General Public License v3.0 (GPL-3.0-only)**. You may use, study, modify, and redistribute it, including commercially, subject to the GPL-3.0 terms. If you distribute a covered modified version, you must provide the corresponding source code under GPL-3.0, preserve required notices, and mark your changes. The license also contains requirements for distributing compiled or packaged versions.
+JARVIS is licensed under the **GNU General Public License v3.0 (GPL-3.0-only)**. You may use, modify, and redistribute it, including commercially, provided you follow the license. When distributing JARVIS or a modified version, you must keep the applicable copyright and license notices, mark your changes, and provide the corresponding source code under GPL-3.0.
 
-Please credit **DaGoatZayyy** and link back to the original repository when presenting or sharing your JARVIS-based project:
+Please retain credit to **DaGoatZayyy** and the original project when redistributing this software:
 
 https://github.com/DaGoatZayyy/Jarvis
 
-GPL-3.0 also requires appropriate copyright and license notices to be retained. See [LICENSE](LICENSE) for the complete license terms.
+See [LICENSE](LICENSE) for the complete terms.
